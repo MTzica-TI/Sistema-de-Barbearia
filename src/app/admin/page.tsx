@@ -223,49 +223,99 @@ export default function AdminPage() {
     return `"${texto}"`;
   }
 
+  function formatarMoeda(valor: number) {
+    return valor.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+  }
+
   function exportarRelatorioCsv() {
     if (agendamentosDaData.length === 0) {
       setMensagem("Nao ha agendamentos na data selecionada para exportar.");
       return;
     }
 
+    const agendamentosOrdenados = [...agendamentosDaData].sort((a, b) => {
+      const porHorario = a.horario.localeCompare(b.horario);
+      if (porHorario !== 0) {
+        return porHorario;
+      }
+
+      return a.clienteNome.localeCompare(b.clienteNome);
+    });
+
+    const totalCancelados = agendamentosDaData.filter(
+      (item) => item.status === "Cancelado"
+    ).length;
+
     const cabecalho = [
       "Data",
       "Horario",
+      "Status",
       "Cliente",
       "Telefone",
       "Plano",
       "Servico",
       "Barbeiro",
-      "Status",
       "Pagamento",
       "Valor estimado",
     ];
 
-    const linhas = agendamentosDaData.map((item) => {
+    const linhasDetalhamento = agendamentosOrdenados.map((item) => {
       const valor = mapaPrecoServico.get(item.servicoId) ?? 60;
       return [
         item.data,
         item.horario,
+        item.status,
         item.clienteNome,
         item.clienteTelefone,
         item.plano,
         item.servicoNome,
         item.barbeiroNome,
-        item.status,
         item.pagamentoStatus,
-        valor,
-      ]
-        .map((coluna) => escaparCsv(coluna))
-        .join(";");
+        formatarMoeda(valor),
+      ];
     });
 
-    const csv = [cabecalho.map((item) => escaparCsv(item)).join(";"), ...linhas].join("\n");
+    const linhasFaturamentoPorBarbeiro = faturamentoPorBarbeiro.map((item) => [
+      item.nome,
+      item.quantidade,
+      formatarMoeda(item.valor),
+    ]);
+
+    const tabelaCsv: Array<Array<string | number>> = [
+      ["RELATORIO ADMINISTRATIVO - BARBER SISTEMA"],
+      ["Data de referencia", dataSelecionadaFormatada],
+      ["Gerado em", new Date().toLocaleString("pt-BR")],
+      [],
+      ["RESUMO"],
+      ["Total de agendamentos", agendamentosDaData.length],
+      ["Agendamentos confirmados", agendaConfirmadaDaData.length],
+      ["Agendamentos cancelados", totalCancelados],
+      ["Clientes marcados", clientesComAgendamentoHoje],
+      ["Faturamento estimado", formatarMoeda(faturamentoHoje)],
+      [],
+      ["FATURAMENTO POR BARBEIRO"],
+      ["Barbeiro", "Agendamentos confirmados", "Faturamento estimado"],
+      ...linhasFaturamentoPorBarbeiro,
+      [],
+      ["DETALHAMENTO DOS AGENDAMENTOS"],
+      cabecalho,
+      ...linhasDetalhamento,
+    ];
+
+    const csv = tabelaCsv
+      .map((linha) =>
+        linha.length === 0 ? "" : linha.map((coluna) => escaparCsv(coluna)).join(";")
+      )
+      .join("\n");
+
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `relatorio-admin-${dataSelecionada}.csv`;
+    link.download = `relatorio-admin-organizado-${dataSelecionada}.csv`;
     link.click();
     URL.revokeObjectURL(url);
 
