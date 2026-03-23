@@ -9,6 +9,7 @@ type ClienteSessao = {
   nome: string;
   email: string;
   telefone: string;
+  fotoUrl?: string;
 };
 
 type UsuarioCadastro = ClienteSessao & {
@@ -95,6 +96,7 @@ export default function LoginPage() {
       nome: usuario.nome,
       email: usuario.email,
       telefone: usuario.telefone,
+      fotoUrl: usuario.fotoUrl,
     });
 
     setMensagem("Login realizado. Seus dados foram detectados no agendamento.");
@@ -135,6 +137,7 @@ export default function LoginPage() {
       nome: novoUsuario.nome,
       email: novoUsuario.email,
       telefone: novoUsuario.telefone,
+      fotoUrl: novoUsuario.fotoUrl,
     });
 
     setMensagem("Cadastro concluido. Seus dados ja foram vinculados ao agendamento.");
