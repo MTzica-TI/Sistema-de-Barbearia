@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
-import { cancelarAgendamento } from "@/lib/agendamentos-store";
+import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
   _: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  const resultado = cancelarAgendamento(id);
+  const existe = await prisma.agendamento.findUnique({
+    where: { id },
+    select: { id: true },
+  });
 
-  if (!resultado.ok) {
-    return NextResponse.json({ error: resultado.error }, { status: 404 });
+  if (!existe) {
+    return NextResponse.json({ error: "Agendamento nao encontrado." }, { status: 404 });
   }
+
+  await prisma.agendamento.update({
+    where: { id },
+    data: { status: "Cancelado" },
+  });
 
   return NextResponse.json({ ok: true });
 }

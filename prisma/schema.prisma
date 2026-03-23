@@ -1,0 +1,42 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Plano {
+  Avulso
+  Mensal
+  Premium
+}
+
+enum StatusAgendamento {
+  Confirmado
+  Cancelado
+}
+
+enum PagamentoStatus {
+  Pendente
+  Confirmado
+}
+
+model Agendamento {
+  id              String            @id
+  clienteNome     String
+  clienteTelefone String
+  plano           Plano
+  servicoId       String
+  servicoNome     String
+  barbeiroId      String
+  barbeiroNome    String
+  data            String
+  horario         String
+  status          StatusAgendamento @default(Confirmado)
+  pagamentoStatus PagamentoStatus   @default(Pendente)
+  criadoEm        DateTime          @default(now())
+
+  @@index([data, barbeiroId, status])
+}
