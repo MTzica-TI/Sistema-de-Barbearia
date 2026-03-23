@@ -21,6 +21,7 @@ export interface Barbeiro {
   nome: string;
   especialidade: string;
   fotoUrl: string;
+  ativo: boolean;
 }
 
 export interface Agendamento {

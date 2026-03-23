@@ -3,45 +3,25 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Agendamento } from "@/types";
-import { barbeiros } from "@/lib/mock-data";
 import type { Barbeiro } from "@/types";
 
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
-const BARBEIROS_KEY = "barber_barbeiros";
-const BARBEIROS_EVENT = "barber-barbeiros-change";
 const AUTH_EVENT = "barber-auth-change";
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
 
-function carregarBarbeirosSalvos(): Barbeiro[] {
-  if (typeof window === "undefined") {
-    return barbeiros;
-  }
-
-  const valorBruto = window.localStorage.getItem(BARBEIROS_KEY);
-  if (!valorBruto) {
-    return barbeiros;
-  }
-
-  try {
-    const parsed = JSON.parse(valorBruto) as Barbeiro[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : barbeiros;
-  } catch {
-    return barbeiros;
-  }
-}
-
 export default function AdminPage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
-  const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>(barbeiros);
+  const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [mensagem, setMensagem] = useState("");
+  const [salvandoDisponibilidadeId, setSalvandoDisponibilidadeId] = useState("");
+  const [salvandoPerfilId, setSalvandoPerfilId] = useState("");
 
   useEffect(() => {
     function sincronizarAcessoAdmin() {
       const sessaoAdmin = window.localStorage.getItem(ADMIN_SESSAO_KEY);
       setStatusAcesso(sessaoAdmin ? "permitido" : "negado");
-      setListaBarbeiros(carregarBarbeirosSalvos());
     }
 
     sincronizarAcessoAdmin();
@@ -56,9 +36,16 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function carregar() {
-      const response = await fetch("/api/agendamentos", { cache: "no-store" });
-      const resultado = (await response.json()) as { agendamentos: Agendamento[] };
+      const [responseAgenda, responseBarbeiros] = await Promise.all([
+        fetch("/api/agendamentos", { cache: "no-store" }),
+        fetch("/api/barbeiros", { cache: "no-store" }),
+      ]);
+      const resultado = (await responseAgenda.json()) as { agendamentos: Agendamento[] };
+      const resultadoBarbeiros = (await responseBarbeiros.json()) as {
+        barbeiros: Barbeiro[];
+      };
       setAgendamentos(resultado.agendamentos ?? []);
+      setListaBarbeiros(resultadoBarbeiros.barbeiros ?? []);
     }
 
     if (statusAcesso === "permitido") {
@@ -76,6 +63,36 @@ export default function AdminPage() {
     [agendaHoje.length]
   );
 
+  async function alternarDisponibilidade(barbeiro: Barbeiro) {
+    setMensagem("");
+    setSalvandoDisponibilidadeId(barbeiro.id);
+
+    const response = await fetch("/api/barbeiros", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: barbeiro.id, ativo: !barbeiro.ativo }),
+    });
+
+    if (!response.ok) {
+      const erro = (await response.json()) as { error?: string };
+      setMensagem(erro.error ?? "Nao foi possivel atualizar o barbeiro.");
+      setSalvandoDisponibilidadeId("");
+      return;
+    }
+
+    const resultado = (await response.json()) as { barbeiro: Barbeiro };
+    setListaBarbeiros((anterior) =>
+      anterior.map((item) => (item.id === resultado.barbeiro.id ? resultado.barbeiro : item))
+    );
+
+    setMensagem(
+      resultado.barbeiro.ativo
+        ? `Barbeiro ${resultado.barbeiro.nome} ativado para agendamento.`
+        : `Barbeiro ${resultado.barbeiro.nome} desativado e bloqueado para agendamentos.`
+    );
+    setSalvandoDisponibilidadeId("");
+  }
+
   function atualizarCampoBarbeiro(
     id: string,
     campo: "nome" | "especialidade" | "fotoUrl",
@@ -86,17 +103,34 @@ export default function AdminPage() {
     );
   }
 
-  function salvarBarbeiros() {
-    window.localStorage.setItem(BARBEIROS_KEY, JSON.stringify(listaBarbeiros));
-    window.dispatchEvent(new Event(BARBEIROS_EVENT));
-    setMensagem("Informacoes dos barbeiros atualizadas no site.");
-  }
+  async function salvarPerfilBarbeiro(barbeiro: Barbeiro) {
+    setMensagem("");
+    setSalvandoPerfilId(barbeiro.id);
 
-  function restaurarPadrao() {
-    window.localStorage.removeItem(BARBEIROS_KEY);
-    window.dispatchEvent(new Event(BARBEIROS_EVENT));
-    setListaBarbeiros(barbeiros);
-    setMensagem("Lista de barbeiros restaurada para o padrao.");
+    const response = await fetch("/api/barbeiros", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: barbeiro.id,
+        nome: barbeiro.nome,
+        especialidade: barbeiro.especialidade,
+        fotoUrl: barbeiro.fotoUrl,
+      }),
+    });
+
+    if (!response.ok) {
+      const erro = (await response.json()) as { error?: string };
+      setMensagem(erro.error ?? "Nao foi possivel salvar o perfil do barbeiro.");
+      setSalvandoPerfilId("");
+      return;
+    }
+
+    const resultado = (await response.json()) as { barbeiro: Barbeiro };
+    setListaBarbeiros((anterior) =>
+      anterior.map((item) => (item.id === resultado.barbeiro.id ? resultado.barbeiro : item))
+    );
+    setMensagem(`Perfil de ${resultado.barbeiro.nome} atualizado com sucesso.`);
+    setSalvandoPerfilId("");
   }
 
   if (statusAcesso === "carregando") {
@@ -134,7 +168,10 @@ export default function AdminPage() {
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card titulo="Agenda de hoje" valor={String(agendaHoje.length)} />
         <Card titulo="Clientes marcados" valor={String(agendaHoje.length)} />
-        <Card titulo="Barbeiros" valor={String(listaBarbeiros.length)} />
+        <Card
+          titulo="Barbeiros ativos"
+          valor={String(listaBarbeiros.filter((item) => item.ativo).length)}
+        />
         <Card titulo="Faturamento (estimado)" valor={`R$ ${faturamentoHoje}`} />
       </div>
 
@@ -152,55 +189,68 @@ export default function AdminPage() {
 
       <div className="mt-8 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-3xl text-amber-900">Editar barbeiros</h2>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={restaurarPadrao}
-              className="rounded-lg border border-amber-900/20 bg-white px-4 py-2 text-sm font-semibold text-amber-900"
-            >
-              Restaurar padrao
-            </button>
-            <button
-              type="button"
-              onClick={salvarBarbeiros}
-              className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white"
-            >
-              Salvar alteracoes
-            </button>
-          </div>
+          <h2 className="text-3xl text-amber-900">Barbeiros e disponibilidade</h2>
         </div>
 
         <div className="mt-4 grid gap-3">
           {listaBarbeiros.map((item) => (
             <article
               key={item.id}
-              className="grid gap-2 rounded-xl border border-amber-900/15 bg-white p-3 sm:grid-cols-3"
+              className="grid gap-3 rounded-xl border border-amber-900/15 bg-white p-3"
             >
-              <input
-                className="rounded-lg border border-amber-900/20 px-3 py-2"
-                value={item.nome}
-                onChange={(event) =>
-                  atualizarCampoBarbeiro(item.id, "nome", event.target.value)
-                }
-                placeholder="Nome"
-              />
-              <input
-                className="rounded-lg border border-amber-900/20 px-3 py-2"
-                value={item.especialidade}
-                onChange={(event) =>
-                  atualizarCampoBarbeiro(item.id, "especialidade", event.target.value)
-                }
-                placeholder="Especialidade"
-              />
-              <input
-                className="rounded-lg border border-amber-900/20 px-3 py-2"
-                value={item.fotoUrl}
-                onChange={(event) =>
-                  atualizarCampoBarbeiro(item.id, "fotoUrl", event.target.value)
-                }
-                placeholder="URL da foto"
-              />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <input
+                  className="rounded-lg border border-amber-900/20 px-3 py-2"
+                  value={item.nome}
+                  onChange={(event) =>
+                    atualizarCampoBarbeiro(item.id, "nome", event.target.value)
+                  }
+                  placeholder="Nome"
+                />
+                <input
+                  className="rounded-lg border border-amber-900/20 px-3 py-2"
+                  value={item.especialidade}
+                  onChange={(event) =>
+                    atualizarCampoBarbeiro(item.id, "especialidade", event.target.value)
+                  }
+                  placeholder="Especialidade"
+                />
+                <input
+                  className="rounded-lg border border-amber-900/20 px-3 py-2"
+                  value={item.fotoUrl}
+                  onChange={(event) =>
+                    atualizarCampoBarbeiro(item.id, "fotoUrl", event.target.value)
+                  }
+                  placeholder="URL da foto"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold text-amber-900">
+                  Status: {item.ativo ? "Ativo" : "Inativo"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => salvarPerfilBarbeiro(item)}
+                  disabled={salvandoPerfilId === item.id}
+                  className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {salvandoPerfilId === item.id ? "Salvando perfil..." : "Salvar perfil"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => alternarDisponibilidade(item)}
+                  disabled={salvandoDisponibilidadeId === item.id}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+                    item.ativo ? "bg-red-600" : "bg-emerald-700"
+                  }`}
+                >
+                  {salvandoDisponibilidadeId === item.id
+                    ? "Salvando disponibilidade..."
+                    : item.ativo
+                      ? "Desativar"
+                      : "Ativar"}
+                </button>
+              </div>
             </article>
           ))}
         </div>

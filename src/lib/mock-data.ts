@@ -6,36 +6,42 @@ export const barbeiros: Barbeiro[] = [
     nome: "Carlos",
     especialidade: "Fade e barba desenhada",
     fotoUrl: "/images/barbeiros/carlos.svg",
+    ativo: true,
   },
   {
     id: "b2",
     nome: "Rafael",
     especialidade: "Cortes classicos",
     fotoUrl: "/images/barbeiros/rafael.svg",
+    ativo: true,
   },
   {
     id: "b3",
     nome: "Diego",
     especialidade: "Degrade e navalhado",
     fotoUrl: "/images/barbeiros/diego.svg",
+    ativo: true,
   },
   {
     id: "b4",
     nome: "Eduardo",
     especialidade: "Corte social e tesoura",
     fotoUrl: "/images/barbeiros/eduardo.svg",
+    ativo: true,
   },
   {
     id: "b5",
     nome: "Lucas",
     especialidade: "Barba premium",
     fotoUrl: "/images/barbeiros/lucas.svg",
+    ativo: true,
   },
   {
     id: "b6",
     nome: "Matheus",
     especialidade: "Corte infantil e degrade",
     fotoUrl: "/images/barbeiros/matheus.svg",
+    ativo: true,
   },
 ];
 

@@ -3,14 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { barbeiros as barbeirosPadrao, horariosPadrao, servicos } from "@/lib/mock-data";
+import { horariosPadrao, servicos } from "@/lib/mock-data";
 import { Agendamento, Barbeiro, Plano } from "@/types";
 
 const planos: Plano[] = ["Avulso", "Mensal", "Premium"];
 const SESSAO_KEY = "barber_cliente_sessao";
 const AUTH_EVENT = "barber-auth-change";
-const BARBEIROS_KEY = "barber_barbeiros";
-const BARBEIROS_EVENT = "barber-barbeiros-change";
 
 type ClienteSessao = {
   nome: string;
@@ -31,18 +29,9 @@ function lerClienteDaSessao() {
   }
 }
 
-function carregarBarbeirosAtivos(): Barbeiro[] {
-  const valorBruto = window.localStorage.getItem(BARBEIROS_KEY);
-  if (!valorBruto) {
-    return barbeirosPadrao;
-  }
-
-  try {
-    const parsed = JSON.parse(valorBruto) as Barbeiro[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : barbeirosPadrao;
-  } catch {
-    return barbeirosPadrao;
-  }
+function horarioJaPassou(data: string, horario: string) {
+  const dataHora = new Date(`${data}T${horario}:00`);
+  return dataHora <= new Date();
 }
 
 export default function AgendamentoPage() {
@@ -50,9 +39,9 @@ export default function AgendamentoPage() {
   const [clienteTelefone, setClienteTelefone] = useState("Seu Numero");
   const [clienteEmail, setClienteEmail] = useState("");
   const [clienteDetectado, setClienteDetectado] = useState(false);
-  const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>(barbeirosPadrao);
+  const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [plano, setPlano] = useState<Plano>("Avulso");
-  const [barbeiroId, setBarbeiroId] = useState(barbeirosPadrao[0]?.id ?? "");
+  const [barbeiroId, setBarbeiroId] = useState("");
   const [servicoId, setServicoId] = useState(servicos[0]?.id ?? "");
   const [data, setData] = useState("");
   const [horario, setHorario] = useState("");
@@ -71,6 +60,21 @@ export default function AgendamentoPage() {
   );
 
   useEffect(() => {
+    async function carregarBarbeiros() {
+      const response = await fetch("/api/barbeiros?ativos=1", {
+        cache: "no-store",
+      });
+      const resultado = (await response.json()) as { barbeiros: Barbeiro[] };
+      const lista = resultado.barbeiros ?? [];
+      setListaBarbeiros(lista);
+      setBarbeiroId((anterior) => {
+        if (lista.some((item) => item.id === anterior)) {
+          return anterior;
+        }
+        return lista[0]?.id ?? "";
+      });
+    }
+
     function atualizarSessaoCliente() {
       const sessaoAtual = lerClienteDaSessao();
       if (!sessaoAtual) {
@@ -87,31 +91,15 @@ export default function AgendamentoPage() {
       setClienteDetectado(true);
     }
 
-    function atualizarListaBarbeiros() {
-      const lista = carregarBarbeirosAtivos();
-      setListaBarbeiros(lista);
-      setBarbeiroId((anterior) => {
-        if (lista.some((item) => item.id === anterior)) {
-          return anterior;
-        }
-
-        return lista[0]?.id ?? "";
-      });
-    }
-
     atualizarSessaoCliente();
-    atualizarListaBarbeiros();
+    void carregarBarbeiros();
 
     window.addEventListener(AUTH_EVENT, atualizarSessaoCliente);
-    window.addEventListener(BARBEIROS_EVENT, atualizarListaBarbeiros);
     window.addEventListener("storage", atualizarSessaoCliente);
-    window.addEventListener("storage", atualizarListaBarbeiros);
 
     return () => {
       window.removeEventListener(AUTH_EVENT, atualizarSessaoCliente);
-      window.removeEventListener(BARBEIROS_EVENT, atualizarListaBarbeiros);
       window.removeEventListener("storage", atualizarSessaoCliente);
-      window.removeEventListener("storage", atualizarListaBarbeiros);
     };
   }, []);
 
@@ -134,7 +122,7 @@ export default function AgendamentoPage() {
   }, [data, barbeiroId]);
 
   const horariosDisponiveis = horariosPadrao.filter(
-    (item) => !horariosOcupados.includes(item)
+    (item) => !horariosOcupados.includes(item) && (!data || !horarioJaPassou(data, item))
   );
 
   async function confirmarAgendamento(event: React.FormEvent<HTMLFormElement>) {
@@ -143,6 +131,11 @@ export default function AgendamentoPage() {
 
     if (!servicoSelecionado || !barbeiroSelecionado || !data || !horario) {
       setMensagem("Preencha todos os campos para confirmar.");
+      return;
+    }
+
+    if (horarioJaPassou(data, horario)) {
+      setMensagem("Esse horario ja passou. Escolha outro horario disponivel.");
       return;
     }
 
@@ -250,6 +243,11 @@ export default function AgendamentoPage() {
 
         <div className="space-y-2 sm:col-span-2 lg:col-span-3">
           <span className="text-sm font-semibold text-amber-900">Barbeiro</span>
+          {listaBarbeiros.length === 0 && (
+            <p className="text-sm text-red-700">
+              Nenhum barbeiro ativo no momento. Aguarde a administracao liberar um profissional.
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {listaBarbeiros.map((item) => (
               <button
@@ -331,7 +329,7 @@ export default function AgendamentoPage() {
         <div className="sm:col-span-2 lg:col-span-3">
           <button
             type="submit"
-            disabled={enviando}
+            disabled={enviando || listaBarbeiros.length === 0}
             className="rounded-xl bg-[var(--brand)] px-6 py-3 font-semibold text-white disabled:opacity-50"
           >
             {enviando ? "Confirmando..." : "Confirmar agendamento"}

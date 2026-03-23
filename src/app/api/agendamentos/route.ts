@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Agendamento } from "@/types";
 import { prisma } from "@/lib/prisma";
+import { garantirBarbeirosNoBanco } from "@/lib/barbeiros-db";
+
+function agendamentoJaPassou(data: string, horario: string) {
+  const dataHora = new Date(`${data}T${horario}:00`);
+  return Number.isNaN(dataHora.getTime()) || dataHora <= new Date();
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -38,6 +44,32 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Agendamento;
+  await garantirBarbeirosNoBanco();
+
+  if (agendamentoJaPassou(body.data, body.horario)) {
+    return NextResponse.json(
+      { error: "Nao e possivel agendar para horarios que ja passaram." },
+      { status: 409 }
+    );
+  }
+
+  const barbeiroAtivo = await prisma.barbeiro.findFirst({
+    where: {
+      id: body.barbeiroId,
+      ativo: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!barbeiroAtivo) {
+    return NextResponse.json(
+      { error: "Barbeiro indisponivel no momento. Escolha outro profissional." },
+      { status: 409 }
+    );
+  }
+
   const conflito = await prisma.agendamento.findFirst({
     where: {
       barbeiroId: body.barbeiroId,
