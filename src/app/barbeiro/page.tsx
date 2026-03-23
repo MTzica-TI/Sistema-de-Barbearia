@@ -2,33 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Agendamento, Barbeiro } from "@/types";
-import { barbeiros as barbeirosPadrao, horariosPadrao } from "@/lib/mock-data";
-
-const BARBEIROS_KEY = "barber_barbeiros";
-const BARBEIROS_EVENT = "barber-barbeiros-change";
-
-function carregarBarbeirosAtivos(): Barbeiro[] {
-  const valorBruto = window.localStorage.getItem(BARBEIROS_KEY);
-  if (!valorBruto) {
-    return barbeirosPadrao;
-  }
-
-  try {
-    const parsed = JSON.parse(valorBruto) as Barbeiro[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : barbeirosPadrao;
-  } catch {
-    return barbeirosPadrao;
-  }
-}
+import { horariosPadrao } from "@/lib/mock-data";
 
 export default function BarbeiroPage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
-  const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>(barbeirosPadrao);
-  const [barbeiroId, setBarbeiroId] = useState(barbeirosPadrao[0]?.id ?? "");
+  const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
+  const [barbeiroId, setBarbeiroId] = useState("");
 
   useEffect(() => {
-    function atualizarListaBarbeiros() {
-      const lista = carregarBarbeirosAtivos();
+    async function carregarBarbeiros() {
+      const response = await fetch("/api/barbeiros", { cache: "no-store" });
+      const resultado = (await response.json()) as { barbeiros: Barbeiro[] };
+      const lista = resultado.barbeiros ?? [];
+
       setListaBarbeiros(lista);
       setBarbeiroId((anterior) => {
         if (lista.some((item) => item.id === anterior)) {
@@ -39,14 +25,7 @@ export default function BarbeiroPage() {
       });
     }
 
-    atualizarListaBarbeiros();
-    window.addEventListener(BARBEIROS_EVENT, atualizarListaBarbeiros);
-    window.addEventListener("storage", atualizarListaBarbeiros);
-
-    return () => {
-      window.removeEventListener(BARBEIROS_EVENT, atualizarListaBarbeiros);
-      window.removeEventListener("storage", atualizarListaBarbeiros);
-    };
+    void carregarBarbeiros();
   }, []);
 
   useEffect(() => {
@@ -90,6 +69,7 @@ export default function BarbeiroPage() {
           className="mt-1 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
           value={barbeiroId}
           onChange={(event) => setBarbeiroId(event.target.value)}
+          disabled={listaBarbeiros.length === 0}
         >
           {listaBarbeiros.map((item) => (
             <option key={item.id} value={item.id}>
@@ -97,6 +77,9 @@ export default function BarbeiroPage() {
             </option>
           ))}
         </select>
+        {listaBarbeiros.length === 0 && (
+          <p className="mt-2 text-sm text-amber-900/80">Nenhum barbeiro cadastrado.</p>
+        )}
       </div>
 
       <div className="mt-6 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">

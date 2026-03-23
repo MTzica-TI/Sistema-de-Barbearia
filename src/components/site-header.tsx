@@ -108,6 +108,10 @@ export default function SiteHeader() {
         return Boolean(adminLogado);
       }
 
+      if (link.href === "/agendamento" || link.href === "/area-cliente") {
+        return Boolean(clienteLogado);
+      }
+
       if (link.href === "/login") {
         return !clienteLogado && !adminLogado;
       }

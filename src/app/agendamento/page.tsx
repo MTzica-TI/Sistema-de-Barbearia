@@ -16,6 +16,8 @@ type ClienteSessao = {
   telefone: string;
 };
 
+type StatusAcesso = "carregando" | "negado" | "permitido";
+
 function lerClienteDaSessao() {
   const valorBruto = window.localStorage.getItem(SESSAO_KEY);
   if (!valorBruto) {
@@ -39,6 +41,7 @@ export default function AgendamentoPage() {
   const [clienteTelefone, setClienteTelefone] = useState("Seu Numero");
   const [clienteEmail, setClienteEmail] = useState("");
   const [clienteDetectado, setClienteDetectado] = useState(false);
+  const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [plano, setPlano] = useState<Plano>("Avulso");
   const [barbeiroId, setBarbeiroId] = useState("");
@@ -82,6 +85,7 @@ export default function AgendamentoPage() {
         setClienteTelefone("Seu Numero");
         setClienteEmail("");
         setClienteDetectado(false);
+        setStatusAcesso("negado");
         return;
       }
 
@@ -89,6 +93,7 @@ export default function AgendamentoPage() {
       setClienteTelefone(sessaoAtual.telefone);
       setClienteEmail(sessaoAtual.email);
       setClienteDetectado(true);
+      setStatusAcesso("permitido");
     }
 
     atualizarSessaoCliente();
@@ -180,6 +185,31 @@ export default function AgendamentoPage() {
     setHorario("");
   }
 
+  if (statusAcesso === "carregando") {
+    return (
+      <section className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <p className="text-amber-900">Verificando acesso do cliente...</p>
+      </section>
+    );
+  }
+
+  if (statusAcesso === "negado") {
+    return (
+      <section className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+        <h1 className="text-4xl text-amber-950">Acesso restrito</h1>
+        <p className="mt-3 text-amber-950/80">
+          Para agendar, voce precisa fazer login como cliente.
+        </p>
+        <Link
+          href="/login"
+          className="mt-5 inline-block rounded-lg bg-amber-900 px-5 py-2.5 font-semibold text-white"
+        >
+          Ir para login
+        </Link>
+      </section>
+    );
+  }
+
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="text-5xl text-amber-950">Agendamento</h1>
@@ -187,20 +217,10 @@ export default function AgendamentoPage() {
         Escolha plano, barbeiro, servico, data e horario disponivel.
       </p>
 
-      {clienteDetectado ? (
-        <div className="mt-4 rounded-2xl border border-emerald-700/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
-          Cliente identificado pelo login: <strong>{clienteNome}</strong>
-          {clienteEmail ? ` (${clienteEmail})` : ""}.
-        </div>
-      ) : (
-        <div className="mt-4 rounded-2xl border border-amber-900/20 bg-amber-100/70 px-4 py-3 text-sm text-amber-950">
-          Faça o login para detectar seus dados automaticamente.{' '}
-          <Link href="/login" className="font-semibold underline">
-            Ir para login
-          </Link>
-          .
-        </div>
-      )}
+      <div className="mt-4 rounded-2xl border border-emerald-700/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+        Cliente identificado pelo login: <strong>{clienteNome}</strong>
+        {clienteEmail ? ` (${clienteEmail})` : ""}.
+      </div>
 
       <form
         onSubmit={confirmarAgendamento}
