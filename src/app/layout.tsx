@@ -18,6 +18,11 @@ const bodyFont = Manrope({
 export const metadata: Metadata = {
   title: "Barber Pro | Sistema de Barbearia",
   description: "Site e sistema de agendamento para barbearia",
+  icons: {
+    icon: "/images/branding/logo_barber.png?v=2",
+    shortcut: "/images/branding/logo_barber.png?v=2",
+    apple: "/images/branding/logo_barber.png?v=2",
+  },
 };
 
 export default function RootLayout({

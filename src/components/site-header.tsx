@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -117,14 +118,24 @@ export default function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-amber-200/70 bg-[rgba(255,248,238,0.85)] text-amber-950 backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="rounded-full border border-amber-700/20 bg-white/80 px-4 py-2 text-sm font-bold tracking-[0.2em] text-amber-900 shadow-sm sm:text-base"
+          className="mx-auto flex w-fit items-center gap-2 rounded-full border border-amber-700/20 bg-white/85 px-4 py-2 text-amber-900 shadow-sm"
         >
-          BARBER SISTEMA
+          <Image
+            src="/images/branding/logo_barber.png"
+            alt="Logo da barbearia"
+            width={40}
+            height={40}
+            className="h-9 w-9 rounded-full object-contain mix-blend-multiply sm:h-10 sm:w-10"
+          />
+          <span className="font-title text-3xl leading-none tracking-[0.02em] sm:text-4xl">
+            BARBER SISTEMA
+          </span>
         </Link>
-        <nav className="-mx-1 flex max-w-full items-center gap-2 overflow-x-auto px-1 text-sm sm:gap-3">
+
+        <nav className="-mx-1 mt-4 flex max-w-full items-center gap-2 overflow-x-auto px-1 text-sm sm:justify-center sm:gap-3">
           {linksVisiveis.map((link) => (
             <Link
               key={link.href}
