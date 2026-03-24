@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Agendamento } from "@/types";
+import { Agendamento, Plano } from "@/types";
 
 const SESSAO_KEY = "barber_cliente_sessao";
 const USUARIOS_KEY = "barber_usuarios";
@@ -20,6 +20,12 @@ type ClienteSessao = {
 
 type UsuarioCadastro = ClienteSessao & {
   senha: string;
+};
+
+type AssinaturaClienteApi = {
+  clienteTelefone: string;
+  plano: Plano;
+  status: "Ativa" | "Cancelada";
 };
 
 function clienteLogado() {
@@ -73,6 +79,8 @@ export default function AreaClientePage() {
   const [fotoUrl, setFotoUrl] = useState("");
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [mensagemPerfil, setMensagemPerfil] = useState("");
+  const [assinatura, setAssinatura] = useState<AssinaturaClienteApi | null>(null);
+  const [processandoAssinatura, setProcessandoAssinatura] = useState(false);
 
   const agendamentosDoCliente = useMemo(() => {
     const telefoneNormalizado = telefone.trim();
@@ -86,21 +94,49 @@ export default function AreaClientePage() {
     });
   }, [agendamentos, nome, telefone]);
 
-  const temPlanoMensal = useMemo(
-    () => agendamentosDoCliente.some((item) => item.plano === "Mensal"),
-    [agendamentosDoCliente]
-  );
+  const statusPlano = useMemo(() => {
+    if (!assinatura) {
+      return "Sem plano";
+    }
 
-  const planoMensalAtivo = useMemo(
-    () =>
-      agendamentosDoCliente.some(
-        (item) =>
-          item.plano === "Mensal" &&
-          item.status === "Confirmado" &&
-          item.pagamentoStatus === "Confirmado"
-      ),
-    [agendamentosDoCliente]
-  );
+    return assinatura.status === "Ativa" ? "Ativo" : "Inativo";
+  }, [assinatura]);
+
+  const classeStatusPlano = useMemo(() => {
+    if (!assinatura) {
+      return "bg-zinc-100 text-zinc-700";
+    }
+
+    return assinatura.status === "Ativa"
+      ? "bg-emerald-100 text-emerald-800"
+      : "bg-red-100 text-red-800";
+  }, [assinatura]);
+
+  async function carregarAssinatura(telefoneCliente: string) {
+    const telefoneNormalizado = telefoneCliente.trim();
+
+    if (!telefoneNormalizado) {
+      setAssinatura(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/assinaturas?clienteTelefone=${encodeURIComponent(telefoneNormalizado)}`,
+        { cache: "no-store" }
+      );
+      const resultado = (await response.json()) as { assinatura: AssinaturaClienteApi | null };
+
+      if (!response.ok) {
+        setAssinatura(null);
+        return;
+      }
+
+      setAssinatura(resultado.assinatura ?? null);
+    } catch {
+      setAssinatura(null);
+    }
+  }
 
   async function carregar() {
     const response = await fetch("/api/agendamentos", { cache: "no-store" });
@@ -139,6 +175,7 @@ export default function AreaClientePage() {
 
       setAgendamentos(resultado.agendamentos ?? []);
       setStatusAcesso("permitido");
+      await carregarAssinatura(sessao?.telefone ?? "");
       setCarregando(false);
     }
 
@@ -153,6 +190,44 @@ export default function AreaClientePage() {
     setCarregando(true);
     await fetch(`/api/agendamentos/${id}/cancelar`, { method: "PATCH" });
     await carregar();
+  }
+
+  async function cancelarAssinatura() {
+    if (!telefone.trim()) {
+      setMensagemPerfil("Telefone nao encontrado para cancelar assinatura.");
+      return;
+    }
+
+    setProcessandoAssinatura(true);
+    setMensagemPerfil("");
+
+    try {
+      const response = await fetch("/api/assinaturas", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clienteTelefone: telefone.trim(),
+          acao: "cancelar",
+        }),
+      });
+
+      const resultado = (await response.json()) as {
+        assinatura?: AssinaturaClienteApi;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        setMensagemPerfil(resultado.error ?? "Nao foi possivel cancelar a assinatura.");
+        return;
+      }
+
+      setAssinatura(resultado.assinatura ?? null);
+      setMensagemPerfil("Assinatura cancelada com sucesso.");
+    } catch {
+      setMensagemPerfil("Nao foi possivel cancelar a assinatura.");
+    } finally {
+      setProcessandoAssinatura(false);
+    }
   }
 
   async function handleFotoPerfil(event: React.ChangeEvent<HTMLInputElement>) {
@@ -240,6 +315,8 @@ export default function AreaClientePage() {
     window.localStorage.setItem(SESSAO_KEY, JSON.stringify(novaSessao));
     window.dispatchEvent(new Event(AUTH_EVENT));
 
+    void carregarAssinatura(telefoneLimpo);
+
     setEmailSessaoOriginal(emailLimpo);
     setNome(nomeLimpo);
     setEmail(emailLimpo);
@@ -283,17 +360,23 @@ export default function AreaClientePage() {
       <div className="mt-6 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-3xl text-amber-900">Meu perfil</h2>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              planoMensalAtivo
-                ? "bg-emerald-100 text-emerald-800"
-                : temPlanoMensal
-                  ? "bg-red-100 text-red-800"
-                  : "bg-zinc-100 text-zinc-700"
-            }`}
-          >
-            Plano mensal: {planoMensalAtivo ? "Ativo" : "Inativo"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${classeStatusPlano}`}>
+              {assinatura
+                ? `Plano: ${assinatura.plano} | ${statusPlano}`
+                : "Plano: Sem plano"}
+            </span>
+            {assinatura?.status === "Ativa" && (
+              <button
+                type="button"
+                onClick={cancelarAssinatura}
+                disabled={processandoAssinatura}
+                className="rounded-lg bg-red-700 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {processandoAssinatura ? "Cancelando..." : "Cancelar assinatura"}
+              </button>
+            )}
+          </div>
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-[140px_1fr]">
           <div className="flex flex-col items-center gap-2">

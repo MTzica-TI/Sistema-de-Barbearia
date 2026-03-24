@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  ASSINATURA_CONFIG_KEY,
-  ASSINATURA_EVENT,
   DEFAULT_ASSINATURA_CONFIG,
   type AssinaturaConfig,
 } from "@/lib/assinaturas-config";
@@ -15,33 +13,34 @@ export default function AssinaturasPage() {
   );
 
   useEffect(() => {
-    function carregarConfigAssinatura() {
-      const valorBruto = window.localStorage.getItem(ASSINATURA_CONFIG_KEY);
-      if (!valorBruto) {
-        setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
-        return;
-      }
+    let ativo = true;
 
+    async function carregarConfigAssinatura() {
       try {
-        const parsed = JSON.parse(valorBruto) as AssinaturaConfig;
-        if (!parsed?.planos || !parsed?.formasPagamento) {
+        const response = await fetch("/api/assinaturas-config", { cache: "no-store" });
+        const config = (await response.json()) as AssinaturaConfig;
+
+        if (!ativo) {
+          return;
+        }
+
+        if (!response.ok || !config?.planos || !config?.formasPagamento) {
           setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
           return;
         }
 
-        setConfigAssinatura(parsed);
+        setConfigAssinatura(config);
       } catch {
-        setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
+        if (ativo) {
+          setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
+        }
       }
     }
 
-    carregarConfigAssinatura();
-    window.addEventListener(ASSINATURA_EVENT, carregarConfigAssinatura);
-    window.addEventListener("storage", carregarConfigAssinatura);
+    void carregarConfigAssinatura();
 
     return () => {
-      window.removeEventListener(ASSINATURA_EVENT, carregarConfigAssinatura);
-      window.removeEventListener("storage", carregarConfigAssinatura);
+      ativo = false;
     };
   }, []);
 

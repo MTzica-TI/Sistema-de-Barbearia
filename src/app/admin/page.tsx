@@ -3,11 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Agendamento } from "@/types";
-import type { Barbeiro, Servico } from "@/types";
+import type { Agendamento, Barbeiro, Plano, Servico } from "@/types";
 import {
-  ASSINATURA_CONFIG_KEY,
-  ASSINATURA_EVENT,
   DEFAULT_ASSINATURA_CONFIG,
   type AssinaturaConfig,
 } from "@/lib/assinaturas-config";
@@ -74,6 +71,7 @@ export default function AdminPage() {
     DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n")
   );
   const [formPlano, setFormPlano] = useState({
+    tipo: "Mensal" as Plano,
     nome: "",
     preco: "",
     ciclo: "/mes",
@@ -143,17 +141,12 @@ export default function AdminPage() {
       return;
     }
 
-    function carregarConfigAssinatura() {
-      const valorBruto = window.localStorage.getItem(ASSINATURA_CONFIG_KEY);
-      if (!valorBruto) {
-        setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
-        setFormasPagamentoTexto(DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n"));
-        return;
-      }
-
+    async function carregarConfigAssinatura() {
       try {
-        const parsed = JSON.parse(valorBruto) as AssinaturaConfig;
-        if (!parsed?.planos || !parsed?.formasPagamento) {
+        const response = await fetch("/api/assinaturas-config", { cache: "no-store" });
+        const parsed = (await response.json()) as AssinaturaConfig;
+
+        if (!response.ok || !parsed?.planos || !parsed?.formasPagamento) {
           setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
           setFormasPagamentoTexto(DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n"));
           return;
@@ -167,14 +160,9 @@ export default function AdminPage() {
       }
     }
 
-    carregarConfigAssinatura();
-    window.addEventListener(ASSINATURA_EVENT, carregarConfigAssinatura);
-    window.addEventListener("storage", carregarConfigAssinatura);
+    void carregarConfigAssinatura();
 
-    return () => {
-      window.removeEventListener(ASSINATURA_EVENT, carregarConfigAssinatura);
-      window.removeEventListener("storage", carregarConfigAssinatura);
-    };
+    return;
   }, [statusAcesso]);
 
   const agendamentosDaData = useMemo(
@@ -477,10 +465,23 @@ export default function AdminPage() {
     setSalvandoPerfilId("");
   }
 
-  function persistirConfiguracaoAssinaturas(proximaConfig: AssinaturaConfig, mensagemSucesso: string) {
-    window.localStorage.setItem(ASSINATURA_CONFIG_KEY, JSON.stringify(proximaConfig));
-    window.dispatchEvent(new Event(ASSINATURA_EVENT));
-    setConfigAssinatura(proximaConfig);
+  async function persistirConfiguracaoAssinaturas(
+    proximaConfig: AssinaturaConfig,
+    mensagemSucesso: string
+  ) {
+    const response = await fetch("/api/assinaturas-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(proximaConfig),
+    });
+
+    const resultado = (await response.json()) as AssinaturaConfig & { error?: string };
+    if (!response.ok) {
+      throw new Error(resultado.error ?? "Nao foi possivel salvar as assinaturas.");
+    }
+
+    setConfigAssinatura(resultado);
+    setFormasPagamentoTexto(resultado.formasPagamento.join("\n"));
     setMensagem(mensagemSucesso);
   }
 
@@ -488,6 +489,7 @@ export default function AdminPage() {
     setModoFormularioPlano("criar");
     setPlanoEmEdicaoIndex(null);
     setFormPlano({
+      tipo: "Mensal",
       nome: "",
       preco: "",
       ciclo: "/mes",
@@ -505,6 +507,7 @@ export default function AdminPage() {
     setModoFormularioPlano("editar");
     setPlanoEmEdicaoIndex(indicePlano);
     setFormPlano({
+      tipo: plano.tipo,
       nome: plano.nome,
       preco: plano.preco,
       ciclo: plano.ciclo,
@@ -517,6 +520,7 @@ export default function AdminPage() {
     setModoFormularioPlano(null);
     setPlanoEmEdicaoIndex(null);
     setFormPlano({
+      tipo: "Mensal",
       nome: "",
       preco: "",
       ciclo: "/mes",
@@ -525,7 +529,10 @@ export default function AdminPage() {
     });
   }
 
-  function salvarFormasPagamento() {
+  async function salvarFormasPagamento() {
+    setSalvandoAssinaturas(true);
+    setMensagem("");
+
     const formasPagamento = formasPagamentoTexto
       .split("\n")
       .map((item) => item.trim())
@@ -536,13 +543,24 @@ export default function AdminPage() {
       formasPagamento,
     };
 
-    persistirConfiguracaoAssinaturas(proximaConfig, "Formas de pagamento atualizadas com sucesso.");
+    try {
+      await persistirConfiguracaoAssinaturas(
+        proximaConfig,
+        "Formas de pagamento atualizadas com sucesso."
+      );
+    } catch (error) {
+      const mensagemErro = error instanceof Error ? error.message : "Erro ao salvar assinaturas.";
+      setMensagem(mensagemErro);
+    } finally {
+      setSalvandoAssinaturas(false);
+    }
   }
 
-  function handleSubmitPlano(event: React.FormEvent) {
+  async function handleSubmitPlano(event: React.FormEvent) {
     event.preventDefault();
     setMensagem("");
 
+    const tipo = formPlano.tipo;
     const nome = formPlano.nome.trim();
     const preco = formPlano.preco.trim();
     const ciclo = formPlano.ciclo.trim() || "/mes";
@@ -557,6 +575,7 @@ export default function AdminPage() {
     }
 
     const planoSalvo = {
+      tipo,
       nome,
       preco,
       ciclo,
@@ -566,38 +585,54 @@ export default function AdminPage() {
 
     setSalvandoAssinaturas(true);
 
-    let proximaConfig: AssinaturaConfig;
-    if (modoFormularioPlano === "editar" && planoEmEdicaoIndex !== null) {
-      proximaConfig = {
-        ...configAssinatura,
-        planos: configAssinatura.planos.map((plano, indiceAtual) =>
-          indiceAtual === planoEmEdicaoIndex ? planoSalvo : plano
-        ),
-      };
-      persistirConfiguracaoAssinaturas(proximaConfig, "Plano atualizado com sucesso.");
-    } else {
-      proximaConfig = {
-        ...configAssinatura,
-        planos: [...configAssinatura.planos, planoSalvo],
-      };
-      persistirConfiguracaoAssinaturas(proximaConfig, "Plano criado com sucesso.");
-    }
+    try {
+      let proximaConfig: AssinaturaConfig;
+      if (modoFormularioPlano === "editar" && planoEmEdicaoIndex !== null) {
+        proximaConfig = {
+          ...configAssinatura,
+          planos: configAssinatura.planos.map((plano, indiceAtual) =>
+            indiceAtual === planoEmEdicaoIndex ? planoSalvo : plano
+          ),
+        };
+        await persistirConfiguracaoAssinaturas(proximaConfig, "Plano atualizado com sucesso.");
+      } else {
+        proximaConfig = {
+          ...configAssinatura,
+          planos: [...configAssinatura.planos, planoSalvo],
+        };
+        await persistirConfiguracaoAssinaturas(proximaConfig, "Plano criado com sucesso.");
+      }
 
-    setSalvandoAssinaturas(false);
-    fecharFormularioPlano();
+      fecharFormularioPlano();
+    } catch (error) {
+      const mensagemErro = error instanceof Error ? error.message : "Erro ao salvar assinaturas.";
+      setMensagem(mensagemErro);
+    } finally {
+      setSalvandoAssinaturas(false);
+    }
   }
 
-  function removerPlano(indicePlano: number) {
+  async function removerPlano(indicePlano: number) {
     if (!confirm("Tem certeza que deseja remover este plano?")) {
       return;
     }
+
+    setSalvandoAssinaturas(true);
+    setMensagem("");
 
     const proximaConfig = {
       ...configAssinatura,
       planos: configAssinatura.planos.filter((_, indiceAtual) => indiceAtual !== indicePlano),
     };
 
-    persistirConfiguracaoAssinaturas(proximaConfig, "Plano removido com sucesso.");
+    try {
+      await persistirConfiguracaoAssinaturas(proximaConfig, "Plano removido com sucesso.");
+    } catch (error) {
+      const mensagemErro = error instanceof Error ? error.message : "Erro ao salvar assinaturas.";
+      setMensagem(mensagemErro);
+    } finally {
+      setSalvandoAssinaturas(false);
+    }
   }
 
   if (statusAcesso === "carregando") {
@@ -839,6 +874,9 @@ export default function AdminPage() {
                 )}
               </div>
               <p className="mt-2 text-sm text-amber-900/90">
+                Tipo: <strong>{plano.tipo}</strong>
+              </p>
+              <p className="mt-1 text-sm text-amber-900/90">
                 {plano.preco} {plano.ciclo}
               </p>
 
@@ -902,6 +940,23 @@ export default function AdminPage() {
             </h2>
 
             <form onSubmit={handleSubmitPlano} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-amber-950">Tipo</label>
+                <select
+                  value={formPlano.tipo}
+                  onChange={(event) =>
+                    setFormPlano((anterior) => ({
+                      ...anterior,
+                      tipo: event.target.value as Plano,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-amber-900/30 bg-white px-3 py-2 text-amber-950"
+                >
+                  <option value="Mensal">Mensal</option>
+                  <option value="Premium">Premium</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-amber-950">Nome do plano</label>
                 <input

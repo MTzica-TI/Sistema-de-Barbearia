@@ -23,6 +23,11 @@ enum PagamentoStatus {
   Confirmado
 }
 
+enum StatusAssinatura {
+  Ativa
+  Cancelada
+}
+
 model Agendamento {
   id              String            @id
   clienteNome     String
@@ -55,4 +60,39 @@ model Servico {
   preco            Float
   duracaoMinutos   Int
   criadoEm         DateTime @default(now())
+}
+
+model PlanoAssinatura {
+  id             String   @id
+  tipo           Plano
+  nome           String
+  preco          String
+  ciclo          String   @default("/mes")
+  destaque       Boolean  @default(false)
+  beneficiosTexto String
+  ordem          Int      @default(0)
+  ativo          Boolean  @default(true)
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+}
+
+model FormaPagamentoAssinatura {
+  id           String   @id
+  descricao    String
+  ordem        Int      @default(0)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+}
+
+model AssinaturaCliente {
+  id               String           @id
+  clienteNome      String
+  clienteTelefone  String           @unique
+  plano            Plano
+  status           StatusAssinatura @default(Ativa)
+  iniciadoEm       DateTime         @default(now())
+  proximaCobrancaEm DateTime?
+  canceladoEm      DateTime?
+  atualizadoEm     DateTime         @updatedAt
 }

@@ -4,9 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { horariosPadrao } from "@/lib/mock-data";
+import { type AssinaturaConfig } from "@/lib/assinaturas-config";
 import { Agendamento, Barbeiro, Plano, Servico } from "@/types";
 
-const planos: Plano[] = ["Avulso", "Mensal", "Premium"];
+const planosPadrao: Plano[] = ["Avulso", "Mensal", "Premium"];
 const SESSAO_KEY = "barber_cliente_sessao";
 const AUTH_EVENT = "barber-auth-change";
 
@@ -44,6 +45,7 @@ export default function AgendamentoPage() {
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
+  const [planosDisponiveis, setPlanosDisponiveis] = useState<Plano[]>(planosPadrao);
   const [plano, setPlano] = useState<Plano>("Avulso");
   const [barbeiroId, setBarbeiroId] = useState("");
   const [servicoId, setServicoId] = useState("");
@@ -66,19 +68,29 @@ export default function AgendamentoPage() {
   useEffect(() => {
     async function carregarDados() {
       try {
-        const [resBarbeiros, resServicos] = await Promise.all([
+        const [resBarbeiros, resServicos, resAssinaturas] = await Promise.all([
           fetch("/api/barbeiros?ativos=1", { cache: "no-store" }),
           fetch("/api/servicos", { cache: "no-store" }),
+          fetch("/api/assinaturas-config", { cache: "no-store" }),
         ]);
 
         const resultadoBarbeiros = (await resBarbeiros.json()) as { barbeiros: Barbeiro[] };
         const resultadoServicos = (await resServicos.json()) as Servico[];
+        const resultadoAssinaturas = (await resAssinaturas.json()) as AssinaturaConfig;
 
         const lista = resultadoBarbeiros.barbeiros ?? [];
         const listaServicos = Array.isArray(resultadoServicos) ? resultadoServicos : [];
+        const tiposAssinaturas = Array.isArray(resultadoAssinaturas?.planos)
+          ? resultadoAssinaturas.planos.map((item) => item.tipo)
+          : [];
+        const listaPlanos = Array.from(new Set<Plano>(["Avulso", ...tiposAssinaturas]));
 
         setListaBarbeiros(lista);
         setServicos(listaServicos);
+        setPlanosDisponiveis(listaPlanos.length > 0 ? listaPlanos : planosPadrao);
+        setPlano((anterior) =>
+          listaPlanos.includes(anterior) ? anterior : (listaPlanos[0] ?? "Avulso")
+        );
 
         setBarbeiroId((anterior) => {
           if (lista.some((item) => item.id === anterior)) {
@@ -95,6 +107,7 @@ export default function AgendamentoPage() {
         });
       } catch (erro) {
         console.error("Erro ao carregar dados:", erro);
+        setPlanosDisponiveis(planosPadrao);
       }
     }
 
@@ -273,7 +286,7 @@ export default function AgendamentoPage() {
             value={plano}
             onChange={(event) => setPlano(event.target.value as Plano)}
           >
-            {planos.map((item) => (
+            {planosDisponiveis.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>

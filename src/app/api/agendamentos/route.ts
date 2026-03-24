@@ -106,5 +106,35 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  if (body.plano === "Mensal" || body.plano === "Premium") {
+    try {
+      const proximaCobrancaEm = new Date();
+      proximaCobrancaEm.setDate(proximaCobrancaEm.getDate() + 30);
+
+      await prisma.assinaturaCliente.upsert({
+        where: {
+          clienteTelefone: body.clienteTelefone,
+        },
+        update: {
+          clienteNome: body.clienteNome,
+          plano: body.plano,
+          status: "Ativa",
+          canceladoEm: null,
+          proximaCobrancaEm,
+        },
+        create: {
+          id: `assinatura-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          clienteNome: body.clienteNome,
+          clienteTelefone: body.clienteTelefone,
+          plano: body.plano,
+          status: "Ativa",
+          proximaCobrancaEm,
+        },
+      });
+    } catch (error) {
+      console.error("Erro ao sincronizar assinatura do cliente:", error);
+    }
+  }
+
   return NextResponse.json({ agendamento }, { status: 201 });
 }
