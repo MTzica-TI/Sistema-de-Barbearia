@@ -16,7 +16,7 @@ const bodyFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Barber Pro | Sistema de Barbearia",
+  title: "Barber Sistema | Sistema de Barbearia",
   description: "Site e sistema de agendamento para barbearia",
   icons: {
     icon: "/images/branding/logo_barber.png?v=2",

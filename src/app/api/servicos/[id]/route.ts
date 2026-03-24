@@ -18,7 +18,6 @@ export async function PUT(
     }
 
     // Verificar se o serviço existe
-    // @ts-expect-error - Prisma adapter type issue
     const servicoExistente = await prisma.servico.findUnique({
       where: { id },
     });
@@ -32,7 +31,6 @@ export async function PUT(
 
     // Verificar se novo nome já existe (se for diferente)
     if (nome !== servicoExistente.nome) {
-      // @ts-expect-error - Prisma adapter type issue
       const servicoDuplicado = await prisma.servico.findUnique({
         where: { nome },
       });
@@ -45,7 +43,6 @@ export async function PUT(
       }
     }
 
-    // @ts-expect-error - Prisma adapter type issue
     const servicoAtualizado = await prisma.servico.update({
       where: { id },
       data: {
@@ -73,7 +70,6 @@ export async function DELETE(
     const { id } = await params;
 
     // Verificar se o serviço existe
-    // @ts-expect-error - Prisma adapter type issue
     const servicoExistente = await prisma.servico.findUnique({
       where: { id },
     });
@@ -85,7 +81,6 @@ export async function DELETE(
       );
     }
 
-    // @ts-expect-error - Prisma adapter type issue
     await prisma.servico.delete({
       where: { id },
     });

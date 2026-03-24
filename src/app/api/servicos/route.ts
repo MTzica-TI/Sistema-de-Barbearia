@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    // @ts-expect-error - Prisma adapter type issue
     const servicos = await prisma.servico.findMany({
       orderBy: { criadoEm: "asc" },
     });
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar se o serviço já existe
-    // @ts-expect-error - Prisma adapter type issue
+
     const servicoExistente = await prisma.servico.findUnique({
       where: { nome },
     });
@@ -42,7 +41,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // @ts-expect-error - Prisma adapter type issue
     const novoServico = await prisma.servico.create({
       data: {
         id: `s${Date.now()}`,

@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Agendamento } from "@/types";
 import type { Barbeiro, Servico } from "@/types";
+import {
+  ASSINATURA_CONFIG_KEY,
+  ASSINATURA_EVENT,
+  DEFAULT_ASSINATURA_CONFIG,
+  type AssinaturaConfig,
+} from "@/lib/assinaturas-config";
 
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
 const AUTH_EVENT = "barber-auth-change";
@@ -12,6 +18,7 @@ const USUARIOS_KEY = "barber_usuarios";
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
 type FiltroEquipe = "todos" | "ativos" | "inativos";
+type ModoFormularioPlano = "criar" | "editar" | null;
 
 type ClienteCadastro = {
   nome: string;
@@ -56,6 +63,23 @@ export default function AdminPage() {
   const [paginaClientes, setPaginaClientes] = useState(1);
   const [salvandoDisponibilidadeId, setSalvandoDisponibilidadeId] = useState("");
   const [salvandoPerfilId, setSalvandoPerfilId] = useState("");
+  const [configAssinatura, setConfigAssinatura] = useState<AssinaturaConfig>(
+    DEFAULT_ASSINATURA_CONFIG
+  );
+  const [salvandoAssinaturas, setSalvandoAssinaturas] = useState(false);
+  const [modoFormularioPlano, setModoFormularioPlano] =
+    useState<ModoFormularioPlano>(null);
+  const [planoEmEdicaoIndex, setPlanoEmEdicaoIndex] = useState<number | null>(null);
+  const [formasPagamentoTexto, setFormasPagamentoTexto] = useState(
+    DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n")
+  );
+  const [formPlano, setFormPlano] = useState({
+    nome: "",
+    preco: "",
+    ciclo: "/mes",
+    destaque: false,
+    beneficiosTexto: "",
+  });
 
   useEffect(() => {
     function sincronizarAcessoAdmin() {
@@ -111,6 +135,45 @@ export default function AdminPage() {
     return () => {
       window.removeEventListener(AUTH_EVENT, sincronizarClientes);
       window.removeEventListener("storage", sincronizarClientes);
+    };
+  }, [statusAcesso]);
+
+  useEffect(() => {
+    if (statusAcesso !== "permitido") {
+      return;
+    }
+
+    function carregarConfigAssinatura() {
+      const valorBruto = window.localStorage.getItem(ASSINATURA_CONFIG_KEY);
+      if (!valorBruto) {
+        setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
+        setFormasPagamentoTexto(DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n"));
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(valorBruto) as AssinaturaConfig;
+        if (!parsed?.planos || !parsed?.formasPagamento) {
+          setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
+          setFormasPagamentoTexto(DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n"));
+          return;
+        }
+
+        setConfigAssinatura(parsed);
+        setFormasPagamentoTexto(parsed.formasPagamento.join("\n"));
+      } catch {
+        setConfigAssinatura(DEFAULT_ASSINATURA_CONFIG);
+        setFormasPagamentoTexto(DEFAULT_ASSINATURA_CONFIG.formasPagamento.join("\n"));
+      }
+    }
+
+    carregarConfigAssinatura();
+    window.addEventListener(ASSINATURA_EVENT, carregarConfigAssinatura);
+    window.addEventListener("storage", carregarConfigAssinatura);
+
+    return () => {
+      window.removeEventListener(ASSINATURA_EVENT, carregarConfigAssinatura);
+      window.removeEventListener("storage", carregarConfigAssinatura);
     };
   }, [statusAcesso]);
 
@@ -414,6 +477,129 @@ export default function AdminPage() {
     setSalvandoPerfilId("");
   }
 
+  function persistirConfiguracaoAssinaturas(proximaConfig: AssinaturaConfig, mensagemSucesso: string) {
+    window.localStorage.setItem(ASSINATURA_CONFIG_KEY, JSON.stringify(proximaConfig));
+    window.dispatchEvent(new Event(ASSINATURA_EVENT));
+    setConfigAssinatura(proximaConfig);
+    setMensagem(mensagemSucesso);
+  }
+
+  function abrirFormularioPlanoCriar() {
+    setModoFormularioPlano("criar");
+    setPlanoEmEdicaoIndex(null);
+    setFormPlano({
+      nome: "",
+      preco: "",
+      ciclo: "/mes",
+      destaque: false,
+      beneficiosTexto: "",
+    });
+  }
+
+  function abrirFormularioPlanoEditar(indicePlano: number) {
+    const plano = configAssinatura.planos[indicePlano];
+    if (!plano) {
+      return;
+    }
+
+    setModoFormularioPlano("editar");
+    setPlanoEmEdicaoIndex(indicePlano);
+    setFormPlano({
+      nome: plano.nome,
+      preco: plano.preco,
+      ciclo: plano.ciclo,
+      destaque: plano.destaque,
+      beneficiosTexto: plano.beneficios.join("\n"),
+    });
+  }
+
+  function fecharFormularioPlano() {
+    setModoFormularioPlano(null);
+    setPlanoEmEdicaoIndex(null);
+    setFormPlano({
+      nome: "",
+      preco: "",
+      ciclo: "/mes",
+      destaque: false,
+      beneficiosTexto: "",
+    });
+  }
+
+  function salvarFormasPagamento() {
+    const formasPagamento = formasPagamentoTexto
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const proximaConfig = {
+      ...configAssinatura,
+      formasPagamento,
+    };
+
+    persistirConfiguracaoAssinaturas(proximaConfig, "Formas de pagamento atualizadas com sucesso.");
+  }
+
+  function handleSubmitPlano(event: React.FormEvent) {
+    event.preventDefault();
+    setMensagem("");
+
+    const nome = formPlano.nome.trim();
+    const preco = formPlano.preco.trim();
+    const ciclo = formPlano.ciclo.trim() || "/mes";
+    const beneficios = formPlano.beneficiosTexto
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (!nome || !preco || beneficios.length === 0) {
+      setMensagem("Preencha nome, preco e ao menos um beneficio do plano.");
+      return;
+    }
+
+    const planoSalvo = {
+      nome,
+      preco,
+      ciclo,
+      destaque: formPlano.destaque,
+      beneficios,
+    };
+
+    setSalvandoAssinaturas(true);
+
+    let proximaConfig: AssinaturaConfig;
+    if (modoFormularioPlano === "editar" && planoEmEdicaoIndex !== null) {
+      proximaConfig = {
+        ...configAssinatura,
+        planos: configAssinatura.planos.map((plano, indiceAtual) =>
+          indiceAtual === planoEmEdicaoIndex ? planoSalvo : plano
+        ),
+      };
+      persistirConfiguracaoAssinaturas(proximaConfig, "Plano atualizado com sucesso.");
+    } else {
+      proximaConfig = {
+        ...configAssinatura,
+        planos: [...configAssinatura.planos, planoSalvo],
+      };
+      persistirConfiguracaoAssinaturas(proximaConfig, "Plano criado com sucesso.");
+    }
+
+    setSalvandoAssinaturas(false);
+    fecharFormularioPlano();
+  }
+
+  function removerPlano(indicePlano: number) {
+    if (!confirm("Tem certeza que deseja remover este plano?")) {
+      return;
+    }
+
+    const proximaConfig = {
+      ...configAssinatura,
+      planos: configAssinatura.planos.filter((_, indiceAtual) => indiceAtual !== indicePlano),
+    };
+
+    persistirConfiguracaoAssinaturas(proximaConfig, "Plano removido com sucesso.");
+  }
+
   if (statusAcesso === "carregando") {
     return (
       <section className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
@@ -533,60 +719,59 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3">
+        <div className="mt-4 grid gap-2">
           {equipeFiltrada.map((item) => (
             <article
               key={item.id}
-              className="grid gap-3 rounded-xl border border-amber-900/15 bg-white p-3"
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-900/10 bg-white p-2"
             >
-              <div className="grid gap-2 sm:grid-cols-3">
+              {/* Nome e Status */}
+              <div className="flex min-w-[200px] flex-col gap-1">
                 <input
-                  className="rounded-lg border border-amber-900/20 px-3 py-2"
+                  className="rounded-md border border-amber-900/20 px-2 py-1 text-sm"
                   value={item.nome}
                   onChange={(event) =>
                     atualizarCampoBarbeiro(item.id, "nome", event.target.value)
                   }
                   placeholder="Nome"
                 />
-                <input
-                  className="rounded-lg border border-amber-900/20 px-3 py-2"
-                  value={item.especialidade}
-                  onChange={(event) =>
-                    atualizarCampoBarbeiro(item.id, "especialidade", event.target.value)
-                  }
-                  placeholder="Especialidade"
-                />
-                <input
-                  className="rounded-lg border border-amber-900/20 px-3 py-2"
-                  value={item.fotoUrl}
-                  onChange={(event) =>
-                    atualizarCampoBarbeiro(item.id, "fotoUrl", event.target.value)
-                  }
-                  placeholder="URL da foto"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs font-semibold text-amber-900">
-                  Status: {item.ativo ? "Ativo" : "Inativo"}
+                  {item.ativo ? "✓ Ativo" : "✗ Inativo"}
                 </p>
+              </div>
+
+              {/* Especialidade */}
+              <input
+                className="flex-1 rounded-md border border-amber-900/20 px-2 py-1 text-sm"
+                value={item.especialidade}
+                onChange={(event) =>
+                  atualizarCampoBarbeiro(item.id, "especialidade", event.target.value)
+                }
+                placeholder="Especialidade"
+              />
+
+              {/* Botões */}
+              <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() => salvarPerfilBarbeiro(item)}
                   disabled={salvandoPerfilId === item.id}
-                  className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  className="whitespace-nowrap rounded-md bg-[var(--brand)] px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                  title="Salvar alterações"
                 >
-                  {salvandoPerfilId === item.id ? "Salvando perfil..." : "Salvar perfil"}
+                  {salvandoPerfilId === item.id ? "..." : "Salvar"}
                 </button>
                 <button
                   type="button"
                   onClick={() => alternarDisponibilidade(item)}
                   disabled={salvandoDisponibilidadeId === item.id}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${
+                  className={`whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold text-white disabled:opacity-60 ${
                     item.ativo ? "bg-red-600" : "bg-emerald-700"
                   }`}
+                  title={item.ativo ? "Desativar" : "Ativar"}
                 >
                   {salvandoDisponibilidadeId === item.id
-                    ? "Salvando disponibilidade..."
+                    ? "..."
                     : item.ativo
                       ? "Desativar"
                       : "Ativar"}
@@ -618,6 +803,194 @@ export default function AdminPage() {
           ))}
         </div>
       </div>
+
+      <div className="mt-8 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-3xl text-amber-900">Personalizar assinaturas</h2>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={abrirFormularioPlanoCriar}
+              className="rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-950"
+            >
+              + Adicionar plano
+            </button>
+            <Link
+              href="/assinaturas"
+              className="rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-50"
+            >
+              Ver pagina de assinaturas
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {configAssinatura.planos.map((plano, indicePlano) => (
+            <article
+              key={`${plano.nome}-${indicePlano}`}
+              className="rounded-xl border border-amber-900/15 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-xl text-amber-900">{plano.nome}</h3>
+                {plano.destaque && (
+                  <span className="rounded-full bg-amber-900 px-2 py-1 text-[11px] font-semibold text-amber-50">
+                    Destaque
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-sm text-amber-900/90">
+                {plano.preco} {plano.ciclo}
+              </p>
+
+              <ul className="mt-3 space-y-1 text-sm text-amber-950/90">
+                {plano.beneficios.map((beneficio) => (
+                  <li key={beneficio} className="flex items-start gap-2">
+                    <span className="mt-1 inline-block h-2 w-2 rounded-full bg-amber-700" />
+                    <span>{beneficio}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => abrirFormularioPlanoEditar(indicePlano)}
+                  className="flex-1 rounded-lg bg-amber-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-800"
+                >
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removerPlano(indicePlano)}
+                  className="flex-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                >
+                  Remover
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {configAssinatura.planos.length === 0 && (
+          <p className="mt-4 text-sm text-amber-900/80">Nenhum plano cadastrado.</p>
+        )}
+
+        <label className="mt-4 block space-y-1">
+          <span className="text-sm font-semibold text-amber-900">Formas de pagamento (1 por linha)</span>
+          <textarea
+            className="min-h-24 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm"
+            value={formasPagamentoTexto}
+            onChange={(event) => setFormasPagamentoTexto(event.target.value)}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={salvarFormasPagamento}
+          disabled={salvandoAssinaturas}
+          className="mt-4 rounded-lg bg-[var(--brand)] px-4 py-2 font-semibold text-white disabled:opacity-60"
+        >
+          {salvandoAssinaturas ? "Salvando..." : "Salvar formas de pagamento"}
+        </button>
+      </div>
+
+      {modoFormularioPlano && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6">
+            <h2 className="mb-4 text-2xl font-bold text-amber-950">
+              {modoFormularioPlano === "editar" ? "Editar plano" : "Novo plano"}
+            </h2>
+
+            <form onSubmit={handleSubmitPlano} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-amber-950">Nome do plano</label>
+                <input
+                  type="text"
+                  value={formPlano.nome}
+                  onChange={(event) =>
+                    setFormPlano((anterior) => ({ ...anterior, nome: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-amber-900/30 bg-white px-3 py-2 text-amber-950"
+                  placeholder="Ex: Plano Mensal Gold"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-amber-950">Preco</label>
+                  <input
+                    type="text"
+                    value={formPlano.preco}
+                    onChange={(event) =>
+                      setFormPlano((anterior) => ({ ...anterior, preco: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-amber-900/30 bg-white px-3 py-2 text-amber-950"
+                    placeholder="Ex: R$ 189,90"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-amber-950">Ciclo</label>
+                  <input
+                    type="text"
+                    value={formPlano.ciclo}
+                    onChange={(event) =>
+                      setFormPlano((anterior) => ({ ...anterior, ciclo: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-amber-900/30 bg-white px-3 py-2 text-amber-950"
+                    placeholder="Ex: /mes"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={formPlano.destaque}
+                  onChange={(event) =>
+                    setFormPlano((anterior) => ({ ...anterior, destaque: event.target.checked }))
+                  }
+                />
+                Marcar como plano em destaque
+              </label>
+
+              <div>
+                <label className="block text-sm font-medium text-amber-950">
+                  Beneficios (1 por linha)
+                </label>
+                <textarea
+                  value={formPlano.beneficiosTexto}
+                  onChange={(event) =>
+                    setFormPlano((anterior) => ({
+                      ...anterior,
+                      beneficiosTexto: event.target.value,
+                    }))
+                  }
+                  className="mt-1 min-h-28 w-full rounded-lg border border-amber-900/30 bg-white px-3 py-2 text-amber-950"
+                  placeholder="Ex: 4 cortes por mes"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={fecharFormularioPlano}
+                  className="flex-1 rounded-lg border border-amber-900/30 px-4 py-2 font-medium text-amber-950 hover:bg-amber-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoAssinaturas}
+                  className="flex-1 rounded-lg bg-amber-900 px-4 py-2 font-medium text-white hover:bg-amber-950 disabled:opacity-50"
+                >
+                  {salvandoAssinaturas ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="mt-8 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

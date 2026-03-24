@@ -57,6 +57,7 @@ function lerSessaoAdmin(): AdminSessao | null {
 const links = [
   { href: "/", label: "Home" },
   { href: "/servicos", label: "Servicos" },
+  { href: "/assinaturas", label: "Assinaturas" },
   { href: "/agendamento", label: "Agendamento" },
   { href: "/area-cliente", label: "Area do cliente" },
   { href: "/admin", label: "Admin" },

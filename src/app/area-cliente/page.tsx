@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Agendamento } from "@/types";
 
 const SESSAO_KEY = "barber_cliente_sessao";
@@ -73,6 +73,34 @@ export default function AreaClientePage() {
   const [fotoUrl, setFotoUrl] = useState("");
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [mensagemPerfil, setMensagemPerfil] = useState("");
+
+  const agendamentosDoCliente = useMemo(() => {
+    const telefoneNormalizado = telefone.trim();
+    const nomeNormalizado = nome.trim().toLowerCase();
+
+    return agendamentos.filter((item) => {
+      const mesmoTelefone =
+        telefoneNormalizado.length > 0 && item.clienteTelefone === telefoneNormalizado;
+      const mesmoNome = item.clienteNome.trim().toLowerCase() === nomeNormalizado;
+      return mesmoTelefone || mesmoNome;
+    });
+  }, [agendamentos, nome, telefone]);
+
+  const temPlanoMensal = useMemo(
+    () => agendamentosDoCliente.some((item) => item.plano === "Mensal"),
+    [agendamentosDoCliente]
+  );
+
+  const planoMensalAtivo = useMemo(
+    () =>
+      agendamentosDoCliente.some(
+        (item) =>
+          item.plano === "Mensal" &&
+          item.status === "Confirmado" &&
+          item.pagamentoStatus === "Confirmado"
+      ),
+    [agendamentosDoCliente]
+  );
 
   async function carregar() {
     const response = await fetch("/api/agendamentos", { cache: "no-store" });
@@ -253,7 +281,20 @@ export default function AreaClientePage() {
       </p>
 
       <div className="mt-6 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
-        <h2 className="text-3xl text-amber-900">Meu perfil</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-3xl text-amber-900">Meu perfil</h2>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              planoMensalAtivo
+                ? "bg-emerald-100 text-emerald-800"
+                : temPlanoMensal
+                  ? "bg-red-100 text-red-800"
+                  : "bg-zinc-100 text-zinc-700"
+            }`}
+          >
+            Plano mensal: {planoMensalAtivo ? "Ativo" : "Inativo"}
+          </span>
+        </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-[140px_1fr]">
           <div className="flex flex-col items-center gap-2">
             <div className="relative h-28 w-28 overflow-hidden rounded-full border border-amber-900/20 bg-white">

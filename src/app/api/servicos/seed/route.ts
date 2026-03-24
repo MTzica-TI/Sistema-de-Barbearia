@@ -16,20 +16,17 @@ export async function POST() {
 
     // Inserir apenas os que não existem
     for (const servico of servicos) {
-      // @ts-expect-error - Prisma adapter type issue
       const existe = await prisma.servico.findUnique({
         where: { nome: servico.nome },
       });
 
       if (!existe) {
-        // @ts-expect-error - Prisma adapter type issue
         await prisma.servico.create({
           data: servico,
         });
       }
     }
 
-    // @ts-expect-error - Prisma adapter type issue
     const total = await prisma.servico.count();
     return NextResponse.json(
       { message: "Serviços carregados com sucesso", total },
