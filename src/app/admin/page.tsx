@@ -4,8 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Agendamento } from "@/types";
-import type { Barbeiro } from "@/types";
-import { servicos } from "@/lib/mock-data";
+import type { Barbeiro, Servico } from "@/types";
 
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
 const AUTH_EVENT = "barber-auth-change";
@@ -46,6 +45,7 @@ export default function AdminPage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
+  const [servicos, setServicos] = useState<Servico[]>([]);
   const [clientes, setClientes] = useState<ClienteCadastro[]>([]);
   const [dataSelecionada, setDataSelecionada] = useState(
     () => new Date().toISOString().slice(0, 10)
@@ -53,6 +53,7 @@ export default function AdminPage() {
   const [mensagem, setMensagem] = useState("");
   const [buscaCliente, setBuscaCliente] = useState("");
   const [filtroEquipe, setFiltroEquipe] = useState<FiltroEquipe>("todos");
+  const [paginaClientes, setPaginaClientes] = useState(1);
   const [salvandoDisponibilidadeId, setSalvandoDisponibilidadeId] = useState("");
   const [salvandoPerfilId, setSalvandoPerfilId] = useState("");
 
@@ -74,16 +75,19 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function carregar() {
-      const [responseAgenda, responseBarbeiros] = await Promise.all([
+      const [responseAgenda, responseBarbeiros, responseServicos] = await Promise.all([
         fetch("/api/agendamentos", { cache: "no-store" }),
         fetch("/api/barbeiros", { cache: "no-store" }),
+        fetch("/api/servicos", { cache: "no-store" }),
       ]);
       const resultado = (await responseAgenda.json()) as { agendamentos: Agendamento[] };
       const resultadoBarbeiros = (await responseBarbeiros.json()) as {
         barbeiros: Barbeiro[];
       };
+      const resultadoServicos = (await responseServicos.json()) as Servico[];
       setAgendamentos(resultado.agendamentos ?? []);
       setListaBarbeiros(resultadoBarbeiros.barbeiros ?? []);
+      setServicos(resultadoServicos ?? []);
       setClientes(carregarClientesDoStorage());
     }
 
@@ -201,13 +205,31 @@ export default function AdminPage() {
         (item) => item.data === dataSelecionada && item.status === "Confirmado"
       );
 
+      // Verificar status do plano mensal
+      const agendamentosMensal = total.filter((item) => item.plano === "Mensal");
+      const ehMensal = agendamentosMensal.length > 0;
+      
+      // Supondo que cada mês é cobrado no início (você pode ajustar essa lógica)
+      const planoAtivo = ehMensal && agendamentosMensal.length > 0;
+
       return {
         ...cliente,
         totalAgendamentos: total.length,
         agendamentosHoje: hojeCliente.length,
+        temPlanoMensal: ehMensal,
+        planoMensalAtivo: planoAtivo,
       };
     });
   }, [agendamentos, clientesFiltrados, dataSelecionada]);
+
+  const clientespaginados = useMemo(() => {
+    const itensPorPagina = 10;
+    const inicio = (paginaClientes - 1) * itensPorPagina;
+    const fim = inicio + itensPorPagina;
+    return resumoClientes.slice(inicio, fim);
+  }, [resumoClientes, paginaClientes]);
+
+  const totalPaginasClientes = Math.ceil(resumoClientes.length / 10);
 
   const dataSelecionadaFormatada = useMemo(() => {
     const [ano, mes, dia] = dataSelecionada.split("-");
@@ -613,7 +635,7 @@ export default function AdminPage() {
             <p className="text-sm text-amber-900/80">Nenhum cliente encontrado.</p>
           )}
 
-          {resumoClientes.map((cliente) => (
+          {clientespaginados.map((cliente) => (
             <article
               key={cliente.email}
               className="grid gap-3 rounded-xl border border-amber-900/15 bg-white p-3 sm:grid-cols-[72px_1fr]"
@@ -635,7 +657,20 @@ export default function AdminPage() {
               </div>
 
               <div className="grid gap-1 text-sm text-amber-950/90">
-                <p className="text-base font-semibold text-amber-950">{cliente.nome}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-base font-semibold text-amber-950">{cliente.nome}</p>
+                  {cliente.temPlanoMensal && (
+                    <span
+                      className={`text-xs px-2 py-1 rounded ${
+                        cliente.planoMensalAtivo
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {cliente.planoMensalAtivo ? "✓ Plano Ativo" : "✗ Plano Inativo"}
+                    </span>
+                  )}
+                </div>
                 <p>Email: {cliente.email}</p>
                 <p>Telefone: {cliente.telefone}</p>
                 <p>
@@ -646,6 +681,30 @@ export default function AdminPage() {
             </article>
           ))}
         </div>
+
+        {totalPaginasClientes > 1 && resumoClientes.length > 0 && (
+          <div className="mt-4 flex items-center justify-between border-t border-amber-900/15 pt-4">
+            <p className="text-sm text-amber-900/80">
+              Página {paginaClientes} de {totalPaginasClientes} ({resumoClientes.length} clientes)
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPaginaClientes((p) => Math.max(1, p - 1))}
+                disabled={paginaClientes === 1}
+                className="rounded-lg border border-amber-900/30 px-3 py-1 text-sm font-medium text-amber-950 hover:bg-amber-50 disabled:opacity-50"
+              >
+                ← Anterior
+              </button>
+              <button
+                onClick={() => setPaginaClientes((p) => Math.min(totalPaginasClientes, p + 1))}
+                disabled={paginaClientes === totalPaginasClientes}
+                className="rounded-lg border border-amber-900/30 px-3 py-1 text-sm font-medium text-amber-950 hover:bg-amber-50 disabled:opacity-50"
+              >
+                Próxima →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

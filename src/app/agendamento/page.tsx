@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { horariosPadrao, servicos } from "@/lib/mock-data";
-import { Agendamento, Barbeiro, Plano } from "@/types";
+import { horariosPadrao } from "@/lib/mock-data";
+import { Agendamento, Barbeiro, Plano, Servico } from "@/types";
 
 const planos: Plano[] = ["Avulso", "Mensal", "Premium"];
 const SESSAO_KEY = "barber_cliente_sessao";
@@ -43,9 +43,10 @@ export default function AgendamentoPage() {
   const [clienteDetectado, setClienteDetectado] = useState(false);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
+  const [servicos, setServicos] = useState<Servico[]>([]);
   const [plano, setPlano] = useState<Plano>("Avulso");
   const [barbeiroId, setBarbeiroId] = useState("");
-  const [servicoId, setServicoId] = useState(servicos[0]?.id ?? "");
+  const [servicoId, setServicoId] = useState("");
   const [data, setData] = useState("");
   const [horario, setHorario] = useState("");
   const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
@@ -59,23 +60,42 @@ export default function AgendamentoPage() {
 
   const servicoSelecionado = useMemo(
     () => servicos.find((item) => item.id === servicoId),
-    [servicoId]
+    [servicoId, servicos]
   );
 
   useEffect(() => {
-    async function carregarBarbeiros() {
-      const response = await fetch("/api/barbeiros?ativos=1", {
-        cache: "no-store",
-      });
-      const resultado = (await response.json()) as { barbeiros: Barbeiro[] };
-      const lista = resultado.barbeiros ?? [];
-      setListaBarbeiros(lista);
-      setBarbeiroId((anterior) => {
-        if (lista.some((item) => item.id === anterior)) {
-          return anterior;
-        }
-        return lista[0]?.id ?? "";
-      });
+    async function carregarDados() {
+      try {
+        const [resBarbeiros, resServicos] = await Promise.all([
+          fetch("/api/barbeiros?ativos=1", { cache: "no-store" }),
+          fetch("/api/servicos", { cache: "no-store" }),
+        ]);
+
+        const resultadoBarbeiros = (await resBarbeiros.json()) as { barbeiros: Barbeiro[] };
+        const resultadoServicos = (await resServicos.json()) as Servico[];
+
+        const lista = resultadoBarbeiros.barbeiros ?? [];
+        const listaServicos = Array.isArray(resultadoServicos) ? resultadoServicos : [];
+
+        setListaBarbeiros(lista);
+        setServicos(listaServicos);
+
+        setBarbeiroId((anterior) => {
+          if (lista.some((item) => item.id === anterior)) {
+            return anterior;
+          }
+          return lista[0]?.id ?? "";
+        });
+
+        setServicoId((anterior) => {
+          if (listaServicos.some((item) => item.id === anterior)) {
+            return anterior;
+          }
+          return listaServicos[0]?.id ?? "";
+        });
+      } catch (erro) {
+        console.error("Erro ao carregar dados:", erro);
+      }
     }
 
     function atualizarSessaoCliente() {
@@ -97,7 +117,7 @@ export default function AgendamentoPage() {
     }
 
     atualizarSessaoCliente();
-    void carregarBarbeiros();
+    void carregarDados();
 
     window.addEventListener(AUTH_EVENT, atualizarSessaoCliente);
     window.addEventListener("storage", atualizarSessaoCliente);

@@ -48,3 +48,11 @@ model Barbeiro {
   fotoUrl      String
   ativo        Boolean @default(true)
 }
+
+model Servico {
+  id               String  @id
+  nome             String  @unique
+  preco            Float
+  duracaoMinutos   Int
+  criadoEm         DateTime @default(now())
+}
