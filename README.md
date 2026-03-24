@@ -1,59 +1,131 @@
 # Sistema Barbearia (Barber Pro)
 
-Projeto em Next.js para barbearia com foco em:
+Sistema web em Next.js para operacao de barbearia, com site institucional,
+agendamento online, painel administrativo, area do cliente e modulo de assinaturas.
 
-- Site institucional
-- Agendamento online com bloqueio de horario
-- Area do cliente para consulta/cancelamento
-- Painel administrativo
-- Painel do barbeiro
-
-## Tecnologias
+## Stack
 
 - Next.js 16 (App Router)
-- React + TypeScript
+- React 19 + TypeScript
 - Tailwind CSS
-- API Routes do Next.js
+- Prisma ORM
+- SQLite (via better-sqlite3)
 
-## Paginas implementadas
+## Funcionalidades principais
+
+- Site institucional com paginas publicas
+- Agendamento com validacao de conflito por data/horario/barbeiro
+- Controle de barbeiros ativos/inativos
+- Gestao de servicos no banco
+- Dashboard admin com resumo operacional e exportacao CSV
+- Area do cliente com perfil, cancelamento de agendamentos e status de assinatura
+- Configuracao de planos/formas de pagamento persistida no banco
+- Assinatura real por cliente (ativa/cancelada)
+
+## Paginas
 
 - `/` Home
-- `/servicos` Lista de servicos e precos
-- `/agendamento` Fluxo de agendamento
-- `/login` Login/Cadastro (MVP de interface)
-- `/area-cliente` Consulta e cancelamento de agendamentos
-- `/contato` Endereco e WhatsApp
-- `/admin` Dashboard administrativo
-- `/barbeiro` Agenda pessoal por barbeiro
+- `/servicos`
+- `/agendamento`
+- `/assinaturas`
+- `/login`
+- `/area-cliente`
+- `/contato`
+- `/admin`
+- `/admin/login`
+- `/barbeiro`
 
-## API implementada
+## API
+
+### Agendamentos
 
 - `GET /api/agendamentos`
-	- Lista todos os agendamentos
+	- Lista agendamentos
 - `GET /api/agendamentos?data=YYYY-MM-DD&barbeiroId=...`
-	- Retorna horarios ocupados para bloqueio na agenda
+	- Retorna horarios ocupados para bloqueio da agenda
 - `POST /api/agendamentos`
-	- Cria agendamento, validando conflito de horario
+	- Cria agendamento com validacoes de horario, conflito e barbeiro ativo
+	- Quando plano for `Mensal` ou `Premium`, cria/reativa assinatura do cliente
 - `PATCH /api/agendamentos/:id/cancelar`
 	- Cancela agendamento
 
-## Regra principal de negocio
+### Assinaturas
 
-O sistema nao permite dois clientes no mesmo horario para o mesmo barbeiro.
+- `GET /api/assinaturas?clienteTelefone=...`
+	- Consulta assinatura do cliente
+- `POST /api/assinaturas`
+	- Cria ou reativa assinatura de cliente
+- `PATCH /api/assinaturas`
+	- Cancela assinatura (`acao: "cancelar"`)
 
-## Rodando localmente
+### Configuracao de assinaturas
 
-No PowerShell deste ambiente, use `npm.cmd` em vez de `npm`:
+- `GET /api/assinaturas-config`
+	- Retorna planos e formas de pagamento ativas
+- `PUT /api/assinaturas-config`
+	- Atualiza planos e formas de pagamento
+
+### Outros endpoints
+
+- `/api/barbeiros`
+- `/api/servicos`
+- `/api/debug/servicos`
+
+## Modelo de dados (resumo)
+
+- `Agendamento`
+- `Barbeiro`
+- `Servico`
+- `PlanoAssinatura`
+- `FormaPagamentoAssinatura`
+- `AssinaturaCliente`
+
+Veja schema completo em `prisma/schema.prisma`.
+
+## Regras de negocio
+
+- Nao permite dois agendamentos confirmados no mesmo horario para o mesmo barbeiro
+- Nao permite agendar para horario que ja passou
+- Nao permite agendar com barbeiro inativo
+- Assinatura do cliente e ativada/reativada quando agendamento usa plano assinavel
+
+## Como rodar localmente
+
+No PowerShell deste ambiente, use `npm.cmd` e `npx.cmd`.
+
+1. Instalar dependencias
 
 ```powershell
 npm.cmd install
+```
+
+2. Aplicar migrations
+
+```powershell
+npx.cmd prisma migrate dev
+```
+
+3. Subir ambiente de desenvolvimento
+
+```powershell
 npm.cmd run dev
 ```
 
-Abra http://localhost:3000
+4. Abrir no navegador
 
-## Observacoes do MVP
+- http://localhost:3000
 
-- Os dados estao em memoria (sem banco definitivo ainda)
-- Login e pagamento estao como base de interface/fluxo
-- Proximo passo recomendado: integrar PostgreSQL + Prisma + auth real
+## Scripts uteis
+
+- `npm.cmd run dev` - desenvolvimento
+- `npm.cmd run build` - build de producao
+- `npm.cmd run start` - iniciar build de producao
+- `npm.cmd run lint` - validar lint
+- `npx.cmd prisma migrate dev` - criar/aplicar migration
+- `npx.cmd prisma generate` - regenerar Prisma Client
+
+## Status atual
+
+- Build e lint estao verdes
+- Persistencia principal em SQLite local
+- Autenticacao e pagamentos ainda em modo MVP
