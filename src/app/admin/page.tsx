@@ -25,6 +25,12 @@ type ClienteCadastro = {
   fotoUrl?: string;
 };
 
+type AssinaturaClienteResumo = {
+  clienteTelefone: string;
+  plano: Plano;
+  status: "Ativa" | "Cancelada";
+};
+
 function carregarClientesDoStorage(): ClienteCadastro[] {
   if (typeof window === "undefined") {
     return [];
@@ -45,12 +51,21 @@ function carregarClientesDoStorage(): ClienteCadastro[] {
   }
 }
 
+async function lerJsonSeguro<T>(response: Response, fallback: T): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function AdminPage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [clientes, setClientes] = useState<ClienteCadastro[]>([]);
+  const [assinaturasClientes, setAssinaturasClientes] = useState<AssinaturaClienteResumo[]>([]);
   const [dataSelecionada, setDataSelecionada] = useState(
     () => new Date().toISOString().slice(0, 10)
   );
@@ -97,20 +112,36 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function carregar() {
-      const [responseAgenda, responseBarbeiros, responseServicos] = await Promise.all([
-        fetch("/api/agendamentos", { cache: "no-store" }),
-        fetch("/api/barbeiros", { cache: "no-store" }),
-        fetch("/api/servicos", { cache: "no-store" }),
-      ]);
-      const resultado = (await responseAgenda.json()) as { agendamentos: Agendamento[] };
-      const resultadoBarbeiros = (await responseBarbeiros.json()) as {
-        barbeiros: Barbeiro[];
-      };
-      const resultadoServicos = (await responseServicos.json()) as Servico[];
-      setAgendamentos(resultado.agendamentos ?? []);
-      setListaBarbeiros(resultadoBarbeiros.barbeiros ?? []);
-      setServicos(resultadoServicos ?? []);
-      setClientes(carregarClientesDoStorage());
+      try {
+        const [responseAgenda, responseBarbeiros, responseServicos, responseAssinaturas] =
+          await Promise.all([
+            fetch("/api/agendamentos", { cache: "no-store" }),
+            fetch("/api/barbeiros", { cache: "no-store" }),
+            fetch("/api/servicos", { cache: "no-store" }),
+            fetch("/api/assinaturas", { cache: "no-store" }),
+          ]);
+
+        const resultado = await lerJsonSeguro<{ agendamentos: Agendamento[] }>(
+          responseAgenda,
+          { agendamentos: [] }
+        );
+        const resultadoBarbeiros = await lerJsonSeguro<{ barbeiros: Barbeiro[] }>(
+          responseBarbeiros,
+          { barbeiros: [] }
+        );
+        const resultadoServicos = await lerJsonSeguro<Servico[]>(responseServicos, []);
+        const resultadoAssinaturas = await lerJsonSeguro<{
+          assinaturas?: AssinaturaClienteResumo[];
+        }>(responseAssinaturas, { assinaturas: [] });
+
+        setAgendamentos(resultado.agendamentos ?? []);
+        setListaBarbeiros(resultadoBarbeiros.barbeiros ?? []);
+        setServicos(Array.isArray(resultadoServicos) ? resultadoServicos : []);
+        setClientes(carregarClientesDoStorage());
+        setAssinaturasClientes(resultadoAssinaturas.assinaturas ?? []);
+      } catch {
+        setMensagem("Falha ao carregar dados do painel.");
+      }
     }
 
     if (statusAcesso === "permitido") {
@@ -177,7 +208,7 @@ export default function AdminPage() {
 
   const mapaPrecoServico = useMemo(
     () => new Map(servicos.map((item) => [item.id, item.preco])),
-    []
+    [servicos]
   );
 
   const faturamentoHoje = useMemo(
@@ -245,6 +276,10 @@ export default function AdminPage() {
   }, [buscaCliente, clientes]);
 
   const resumoClientes = useMemo(() => {
+    const mapaAssinaturas = new Map(
+      assinaturasClientes.map((item) => [item.clienteTelefone, item])
+    );
+
     return clientesFiltrados.map((cliente) => {
       const total = agendamentos.filter(
         (item) =>
@@ -255,23 +290,17 @@ export default function AdminPage() {
       const hojeCliente = total.filter(
         (item) => item.data === dataSelecionada && item.status === "Confirmado"
       );
-
-      // Verificar status do plano mensal
-      const agendamentosMensal = total.filter((item) => item.plano === "Mensal");
-      const ehMensal = agendamentosMensal.length > 0;
-      
-      // Supondo que cada mês é cobrado no início (você pode ajustar essa lógica)
-      const planoAtivo = ehMensal && agendamentosMensal.length > 0;
+      const assinatura = mapaAssinaturas.get(cliente.telefone);
 
       return {
         ...cliente,
         totalAgendamentos: total.length,
         agendamentosHoje: hojeCliente.length,
-        temPlanoMensal: ehMensal,
-        planoMensalAtivo: planoAtivo,
+        assinaturaPlano: assinatura?.plano ?? null,
+        assinaturaAtiva: assinatura?.status === "Ativa",
       };
     });
-  }, [agendamentos, clientesFiltrados, dataSelecionada]);
+  }, [agendamentos, assinaturasClientes, clientesFiltrados, dataSelecionada]);
 
   const clientespaginados = useMemo(() => {
     const itensPorPagina = 10;
@@ -1087,15 +1116,17 @@ export default function AdminPage() {
               <div className="grid gap-1 text-sm text-amber-950/90">
                 <div className="flex items-center gap-2">
                   <p className="text-base font-semibold text-amber-950">{cliente.nome}</p>
-                  {cliente.temPlanoMensal && (
+                  {cliente.assinaturaPlano && (
                     <span
                       className={`text-xs px-2 py-1 rounded ${
-                        cliente.planoMensalAtivo
+                        cliente.assinaturaAtiva
                           ? "bg-green-100 text-green-800"
                           : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {cliente.planoMensalAtivo ? "✓ Plano Ativo" : "✗ Plano Inativo"}
+                      {cliente.assinaturaAtiva
+                        ? `✓ ${cliente.assinaturaPlano} Ativo`
+                        : `✗ ${cliente.assinaturaPlano} Inativo`}
                     </span>
                   )}
                 </div>

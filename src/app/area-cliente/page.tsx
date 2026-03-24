@@ -82,18 +82,6 @@ export default function AreaClientePage() {
   const [assinatura, setAssinatura] = useState<AssinaturaClienteApi | null>(null);
   const [processandoAssinatura, setProcessandoAssinatura] = useState(false);
 
-  const agendamentosDoCliente = useMemo(() => {
-    const telefoneNormalizado = telefone.trim();
-    const nomeNormalizado = nome.trim().toLowerCase();
-
-    return agendamentos.filter((item) => {
-      const mesmoTelefone =
-        telefoneNormalizado.length > 0 && item.clienteTelefone === telefoneNormalizado;
-      const mesmoNome = item.clienteNome.trim().toLowerCase() === nomeNormalizado;
-      return mesmoTelefone || mesmoNome;
-    });
-  }, [agendamentos, nome, telefone]);
-
   const statusPlano = useMemo(() => {
     if (!assinatura) {
       return "Sem plano";

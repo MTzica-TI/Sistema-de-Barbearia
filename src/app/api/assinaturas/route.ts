@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import { Plano } from "@/types";
 
 function planoAssinavel(plano: Plano) {
@@ -14,18 +14,32 @@ function dataProximaCobranca() {
 }
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const clienteTelefone = (searchParams.get("clienteTelefone") ?? "").trim();
+  try {
+    const { searchParams } = new URL(request.url);
+    const clienteTelefone = (searchParams.get("clienteTelefone") ?? "").trim();
 
-  if (!clienteTelefone) {
-    return NextResponse.json({ assinatura: null });
+    if (!clienteTelefone) {
+      const assinaturas = await prisma.assinaturaCliente.findMany({
+        orderBy: {
+          atualizadoEm: "desc",
+        },
+      });
+
+      return NextResponse.json({ assinaturas });
+    }
+
+    const assinatura = await prisma.assinaturaCliente.findUnique({
+      where: { clienteTelefone },
+    });
+
+    return NextResponse.json({ assinatura });
+  } catch (error) {
+    console.error("Erro ao consultar assinaturas:", error);
+    return NextResponse.json(
+      { error: "Nao foi possivel consultar assinaturas." },
+      { status: 500 }
+    );
   }
-
-  const assinatura = await prisma.assinaturaCliente.findUnique({
-    where: { clienteTelefone },
-  });
-
-  return NextResponse.json({ assinatura });
 }
 
 export async function POST(request: NextRequest) {

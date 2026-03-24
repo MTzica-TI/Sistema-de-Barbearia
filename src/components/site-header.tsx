@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 const CLIENTE_SESSAO_KEY = "barber_cliente_sessao";
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
+const BARBEIRO_SESSAO_KEY = "barber_barbeiro_sessao";
 const AUTH_EVENT = "barber-auth-change";
 
 type ClienteSessao = {
@@ -18,6 +19,11 @@ type ClienteSessao = {
 type AdminSessao = {
   nome: string;
   email: string;
+};
+
+type BarbeiroSessao = {
+  id: string;
+  nome: string;
 };
 
 function lerSessaoCliente(): ClienteSessao | null {
@@ -54,6 +60,23 @@ function lerSessaoAdmin(): AdminSessao | null {
   }
 }
 
+function lerSessaoBarbeiro(): BarbeiroSessao | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const valorBruto = window.localStorage.getItem(BARBEIRO_SESSAO_KEY);
+  if (!valorBruto) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(valorBruto) as BarbeiroSessao;
+  } catch {
+    return null;
+  }
+}
+
 const links = [
   { href: "/", label: "Home" },
   { href: "/servicos", label: "Servicos" },
@@ -71,11 +94,13 @@ export default function SiteHeader() {
   const router = useRouter();
   const [clienteLogado, setClienteLogado] = useState<ClienteSessao | null>(null);
   const [adminLogado, setAdminLogado] = useState<AdminSessao | null>(null);
+  const [barbeiroLogado, setBarbeiroLogado] = useState<BarbeiroSessao | null>(null);
 
   useEffect(() => {
     function atualizarSessao() {
       setClienteLogado(lerSessaoCliente());
       setAdminLogado(lerSessaoAdmin());
+      setBarbeiroLogado(lerSessaoBarbeiro());
     }
 
     atualizarSessao();
@@ -93,6 +118,10 @@ export default function SiteHeader() {
       window.localStorage.removeItem(ADMIN_SESSAO_KEY);
     }
 
+    if (barbeiroLogado) {
+      window.localStorage.removeItem(BARBEIRO_SESSAO_KEY);
+    }
+
     if (clienteLogado) {
       window.localStorage.removeItem(CLIENTE_SESSAO_KEY);
     }
@@ -100,7 +129,8 @@ export default function SiteHeader() {
     window.dispatchEvent(new Event(AUTH_EVENT));
     setClienteLogado(null);
     setAdminLogado(null);
-    router.push(adminLogado ? "/admin/login" : "/login");
+    setBarbeiroLogado(null);
+    router.push(adminLogado ? "/admin/login" : barbeiroLogado ? "/barbeiro/login" : "/login");
   }
 
   const linksVisiveis = links.filter(
@@ -109,12 +139,16 @@ export default function SiteHeader() {
         return Boolean(adminLogado);
       }
 
+      if (link.href === "/barbeiro") {
+        return Boolean(adminLogado || barbeiroLogado);
+      }
+
       if (link.href === "/agendamento" || link.href === "/area-cliente") {
         return Boolean(clienteLogado);
       }
 
       if (link.href === "/login") {
-        return !clienteLogado && !adminLogado;
+        return !clienteLogado && !adminLogado && !barbeiroLogado;
       }
 
       return true;
@@ -154,7 +188,7 @@ export default function SiteHeader() {
               {link.label}
             </Link>
           ))}
-          {(clienteLogado || adminLogado) && (
+          {(clienteLogado || adminLogado || barbeiroLogado) && (
             <button
               type="button"
               onClick={handleLogout}
@@ -162,6 +196,8 @@ export default function SiteHeader() {
             >
               {adminLogado
                 ? `Sair admin (${adminLogado.nome.split(" ")[0]})`
+                : barbeiroLogado
+                  ? `Sair barbeiro (${barbeiroLogado.nome.split(" ")[0]})`
                 : `Sair (${clienteLogado?.nome.split(" ")[0] ?? "Conta"})`}
             </button>
           )}

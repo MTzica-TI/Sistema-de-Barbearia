@@ -1,4 +1,5 @@
-// esporte com tipos corrigidos para evitar problema de tipo com adapter better-sqlite3
-import { prisma as _prisma } from "./prisma";
+import { PrismaClient } from "@prisma/client";
+import { prisma as prismaBase } from "./prisma";
 
-export { prisma } from "./prisma";
+// Reexport tipado para manter o IntelliSense sincronizado com o client gerado.
+export const prisma: PrismaClient = prismaBase;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Agendamento } from "@/types";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import { garantirBarbeirosNoBanco } from "@/lib/barbeiros-db";
 
 function agendamentoJaPassou(data: string, horario: string) {
