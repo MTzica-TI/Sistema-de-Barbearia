@@ -10,6 +10,7 @@ const USUARIOS_KEY = "barber_usuarios";
 const AUTH_EVENT = "barber-auth-change";
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
+type FiltroHistorico = "todos" | "confirmado" | "cancelado";
 
 type ClienteSessao = {
   nome: string;
@@ -26,6 +27,7 @@ type AssinaturaClienteApi = {
   clienteTelefone: string;
   plano: Plano;
   status: "Ativa" | "Cancelada";
+  proximaCobrancaEm?: string | null;
 };
 
 function clienteLogado() {
@@ -72,6 +74,8 @@ export default function AreaClientePage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
+  const [paginaHistorico, setPaginaHistorico] = useState(1);
+  const [filtroHistorico, setFiltroHistorico] = useState<FiltroHistorico>("todos");
   const [emailSessaoOriginal, setEmailSessaoOriginal] = useState("");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
@@ -80,7 +84,6 @@ export default function AreaClientePage() {
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [mensagemPerfil, setMensagemPerfil] = useState("");
   const [assinatura, setAssinatura] = useState<AssinaturaClienteApi | null>(null);
-  const [processandoAssinatura, setProcessandoAssinatura] = useState(false);
 
   const statusPlano = useMemo(() => {
     if (!assinatura) {
@@ -99,6 +102,96 @@ export default function AreaClientePage() {
       ? "bg-emerald-100 text-emerald-800"
       : "bg-red-100 text-red-800";
   }, [assinatura]);
+
+  const assinaturaAtivaEmDia = useMemo(() => {
+    if (!assinatura || assinatura.status !== "Ativa") {
+      return false;
+    }
+
+    if (!assinatura.proximaCobrancaEm) {
+      return false;
+    }
+
+    const proxima = new Date(assinatura.proximaCobrancaEm);
+    if (Number.isNaN(proxima.getTime())) {
+      return false;
+    }
+
+    return proxima.getTime() >= Date.now();
+  }, [assinatura]);
+
+  const planoReconhecido = useMemo<Plano>(() => {
+    if (
+      assinaturaAtivaEmDia &&
+      assinatura &&
+      (assinatura.plano === "Mensal" || assinatura.plano === "Premium")
+    ) {
+      return assinatura.plano;
+    }
+
+    return "Avulso";
+  }, [assinatura, assinaturaAtivaEmDia]);
+
+  const historicoCliente = useMemo(() => {
+    const telefoneNormalizado = telefone.replace(/\D/g, "");
+    const nomeNormalizado = nome.trim().toLowerCase();
+
+    return agendamentos
+      .filter((item) => {
+        const telefoneItem = item.clienteTelefone.replace(/\D/g, "");
+        const nomeItem = item.clienteNome.trim().toLowerCase();
+
+        if (telefoneNormalizado && telefoneItem === telefoneNormalizado) {
+          return true;
+        }
+
+        if (!telefoneNormalizado && nomeNormalizado && nomeItem === nomeNormalizado) {
+          return true;
+        }
+
+        return false;
+      })
+      .sort((a, b) => {
+        const chaveA = `${a.data}T${a.horario}`;
+        const chaveB = `${b.data}T${b.horario}`;
+        return chaveB.localeCompare(chaveA);
+      });
+  }, [agendamentos, nome, telefone]);
+
+  const historicoFiltrado = useMemo(() => {
+    if (filtroHistorico === "todos") {
+      return historicoCliente;
+    }
+
+    const statusAlvo = filtroHistorico === "confirmado" ? "Confirmado" : "Cancelado";
+    return historicoCliente.filter((item) => item.status === statusAlvo);
+  }, [filtroHistorico, historicoCliente]);
+
+  const totalPaginasHistorico = Math.ceil(historicoFiltrado.length / 6);
+
+  useEffect(() => {
+    setPaginaHistorico(1);
+  }, [filtroHistorico]);
+
+  useEffect(() => {
+    if (totalPaginasHistorico === 0) {
+      if (paginaHistorico !== 1) {
+        setPaginaHistorico(1);
+      }
+      return;
+    }
+
+    if (paginaHistorico > totalPaginasHistorico) {
+      setPaginaHistorico(totalPaginasHistorico);
+    }
+  }, [paginaHistorico, totalPaginasHistorico]);
+
+  const historicoPaginado = useMemo(() => {
+    const itensPorPagina = 6;
+    const inicio = (paginaHistorico - 1) * itensPorPagina;
+    const fim = inicio + itensPorPagina;
+    return historicoFiltrado.slice(inicio, fim);
+  }, [historicoFiltrado, paginaHistorico]);
 
   async function carregarAssinatura(telefoneCliente: string) {
     const telefoneNormalizado = telefoneCliente.trim();
@@ -176,46 +269,13 @@ export default function AreaClientePage() {
 
   async function cancelar(id: string) {
     setCarregando(true);
-    await fetch(`/api/agendamentos/${id}/cancelar`, { method: "PATCH" });
+    await fetch(`/api/agendamentos/${id}/cancelar`, {
+      method: "PATCH",
+      headers: {
+        "x-cliente-telefone": telefone,
+      },
+    });
     await carregar();
-  }
-
-  async function cancelarAssinatura() {
-    if (!telefone.trim()) {
-      setMensagemPerfil("Telefone nao encontrado para cancelar assinatura.");
-      return;
-    }
-
-    setProcessandoAssinatura(true);
-    setMensagemPerfil("");
-
-    try {
-      const response = await fetch("/api/assinaturas", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clienteTelefone: telefone.trim(),
-          acao: "cancelar",
-        }),
-      });
-
-      const resultado = (await response.json()) as {
-        assinatura?: AssinaturaClienteApi;
-        error?: string;
-      };
-
-      if (!response.ok) {
-        setMensagemPerfil(resultado.error ?? "Nao foi possivel cancelar a assinatura.");
-        return;
-      }
-
-      setAssinatura(resultado.assinatura ?? null);
-      setMensagemPerfil("Assinatura cancelada com sucesso.");
-    } catch {
-      setMensagemPerfil("Nao foi possivel cancelar a assinatura.");
-    } finally {
-      setProcessandoAssinatura(false);
-    }
   }
 
   async function handleFotoPerfil(event: React.ChangeEvent<HTMLInputElement>) {
@@ -349,23 +409,23 @@ export default function AreaClientePage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-3xl text-amber-900">Meu perfil</h2>
           <div className="flex items-center gap-2">
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
+              Plano reconhecido: {planoReconhecido}
+            </span>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${classeStatusPlano}`}>
               {assinatura
                 ? `Plano: ${assinatura.plano} | ${statusPlano}`
                 : "Plano: Sem plano"}
             </span>
-            {assinatura?.status === "Ativa" && (
-              <button
-                type="button"
-                onClick={cancelarAssinatura}
-                disabled={processandoAssinatura}
-                className="rounded-lg bg-red-700 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
-              >
-                {processandoAssinatura ? "Cancelando..." : "Cancelar assinatura"}
-              </button>
-            )}
           </div>
         </div>
+        {assinatura?.status === "Ativa" && (
+          <p className="mt-3 text-xs text-amber-900/80">
+            {assinaturaAtivaEmDia
+              ? "Assinatura ativa e em dia para uso dos beneficios do plano mensal."
+              : "Assinatura ativa, porem com cobranca pendente. Agendamentos serao tratados como Avulso ate regularizacao."}
+          </p>
+        )}
         <div className="mt-4 grid gap-4 sm:grid-cols-[140px_1fr]">
           <div className="flex flex-col items-center gap-2">
             <div className="relative h-28 w-28 overflow-hidden rounded-full border border-amber-900/20 bg-white">
@@ -450,31 +510,102 @@ export default function AreaClientePage() {
       {carregando ? (
         <p className="mt-6 text-sm">Carregando...</p>
       ) : (
-        <div className="mt-6 space-y-3">
-          {agendamentos.map((item) => (
-            <article
-              key={item.id}
-              className="flex flex-col gap-3 rounded-xl border border-amber-900/20 bg-[var(--surface)] p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="text-sm text-amber-950/90">
-                <p className="font-semibold">{item.clienteNome}</p>
-                <p>
-                  {item.servicoNome} com {item.barbeiroNome}
+        <div className="mt-6 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-3xl text-amber-900">Historico de agendamentos</h2>
+            <div className="inline-flex rounded-xl border border-amber-900/20 bg-amber-50 p-1">
+              <button
+                type="button"
+                onClick={() => setFiltroHistorico("todos")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  filtroHistorico === "todos"
+                    ? "bg-amber-900 text-white shadow-sm"
+                    : "text-amber-900 hover:bg-white"
+                }`}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroHistorico("confirmado")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  filtroHistorico === "confirmado"
+                    ? "bg-amber-900 text-white shadow-sm"
+                    : "text-amber-900 hover:bg-white"
+                }`}
+              >
+                Confirmados
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroHistorico("cancelado")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  filtroHistorico === "cancelado"
+                    ? "bg-amber-900 text-white shadow-sm"
+                    : "text-amber-900 hover:bg-white"
+                }`}
+              >
+                Cancelados
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {historicoFiltrado.length === 0 && (
+              <p className="text-sm text-amber-900/80">Nenhum agendamento encontrado.</p>
+            )}
+
+            {historicoPaginado.map((item) => (
+              <article
+                key={item.id}
+                className="flex flex-col gap-3 rounded-xl border border-amber-900/20 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="text-sm text-amber-950/90">
+                  <p className="font-semibold">{item.clienteNome}</p>
+                  <p>
+                    {item.servicoNome} com {item.barbeiroNome}
+                  </p>
+                  <p>
+                    {item.data} as {item.horario} | {item.status}
+                  </p>
+                </div>
+                {item.status === "Confirmado" && (
+                  <button
+                    onClick={() => cancelar(item.id)}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </article>
+            ))}
+
+            {totalPaginasHistorico > 1 && historicoFiltrado.length > 0 && (
+              <div className="mt-4 flex items-center justify-between border-t border-amber-900/15 pt-4">
+                <p className="text-sm text-amber-900/80">
+                  Pagina {paginaHistorico} de {totalPaginasHistorico} ({historicoFiltrado.length} agendamentos)
                 </p>
-                <p>
-                  {item.data} as {item.horario} | {item.status}
-                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPaginaHistorico((p) => Math.max(1, p - 1))}
+                    disabled={paginaHistorico === 1}
+                    className="rounded-lg border border-amber-900/30 px-3 py-1 text-sm font-medium text-amber-950 hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    ← Anterior
+                  </button>
+                  <button
+                    onClick={() =>
+                      setPaginaHistorico((p) => Math.min(totalPaginasHistorico, p + 1))
+                    }
+                    disabled={paginaHistorico === totalPaginasHistorico}
+                    className="rounded-lg border border-amber-900/30 px-3 py-1 text-sm font-medium text-amber-950 hover:bg-amber-50 disabled:opacity-50"
+                  >
+                    Proxima →
+                  </button>
+                </div>
               </div>
-              {item.status === "Confirmado" && (
-                <button
-                  onClick={() => cancelar(item.id)}
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white"
-                >
-                  Cancelar
-                </button>
-              )}
-            </article>
-          ))}
+            )}
+          </div>
         </div>
       )}
     </section>

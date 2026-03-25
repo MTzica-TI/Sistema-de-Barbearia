@@ -4,10 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { horariosPadrao } from "@/lib/mock-data";
-import { type AssinaturaConfig } from "@/lib/assinaturas-config";
 import { Agendamento, Barbeiro, Plano, Servico } from "@/types";
 
-const planosPadrao: Plano[] = ["Avulso", "Mensal", "Premium"];
 const SESSAO_KEY = "barber_cliente_sessao";
 const AUTH_EVENT = "barber-auth-change";
 
@@ -15,6 +13,12 @@ type ClienteSessao = {
   nome: string;
   email: string;
   telefone: string;
+};
+
+type AssinaturaClienteApi = {
+  plano: Plano;
+  status: "Ativa" | "Cancelada";
+  proximaCobrancaEm?: string | null;
 };
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
@@ -45,8 +49,8 @@ export default function AgendamentoPage() {
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
-  const [planosDisponiveis, setPlanosDisponiveis] = useState<Plano[]>(planosPadrao);
-  const [plano, setPlano] = useState<Plano>("Avulso");
+  const [assinaturaCliente, setAssinaturaCliente] = useState<AssinaturaClienteApi | null>(null);
+  const [carregandoPlano, setCarregandoPlano] = useState(false);
   const [barbeiroId, setBarbeiroId] = useState("");
   const [servicoId, setServicoId] = useState("");
   const [data, setData] = useState("");
@@ -65,32 +69,51 @@ export default function AgendamentoPage() {
     [servicoId, servicos]
   );
 
+  const assinaturaAtivaEmDia = useMemo(() => {
+    if (!assinaturaCliente || assinaturaCliente.status !== "Ativa") {
+      return false;
+    }
+
+    if (!assinaturaCliente.proximaCobrancaEm) {
+      return false;
+    }
+
+    const proxima = new Date(assinaturaCliente.proximaCobrancaEm);
+    if (Number.isNaN(proxima.getTime())) {
+      return false;
+    }
+
+    return proxima.getTime() >= Date.now();
+  }, [assinaturaCliente]);
+
+  const planoReconhecido = useMemo<Plano>(() => {
+    if (
+      assinaturaAtivaEmDia &&
+      assinaturaCliente &&
+      (assinaturaCliente.plano === "Mensal" || assinaturaCliente.plano === "Premium")
+    ) {
+      return assinaturaCliente.plano;
+    }
+
+    return "Avulso";
+  }, [assinaturaAtivaEmDia, assinaturaCliente]);
+
   useEffect(() => {
     async function carregarDados() {
       try {
-        const [resBarbeiros, resServicos, resAssinaturas] = await Promise.all([
+        const [resBarbeiros, resServicos] = await Promise.all([
           fetch("/api/barbeiros?ativos=1", { cache: "no-store" }),
           fetch("/api/servicos", { cache: "no-store" }),
-          fetch("/api/assinaturas-config", { cache: "no-store" }),
         ]);
 
         const resultadoBarbeiros = (await resBarbeiros.json()) as { barbeiros: Barbeiro[] };
         const resultadoServicos = (await resServicos.json()) as Servico[];
-        const resultadoAssinaturas = (await resAssinaturas.json()) as AssinaturaConfig;
 
         const lista = resultadoBarbeiros.barbeiros ?? [];
         const listaServicos = Array.isArray(resultadoServicos) ? resultadoServicos : [];
-        const tiposAssinaturas = Array.isArray(resultadoAssinaturas?.planos)
-          ? resultadoAssinaturas.planos.map((item) => item.tipo)
-          : [];
-        const listaPlanos = Array.from(new Set<Plano>(["Avulso", ...tiposAssinaturas]));
 
         setListaBarbeiros(lista);
         setServicos(listaServicos);
-        setPlanosDisponiveis(listaPlanos.length > 0 ? listaPlanos : planosPadrao);
-        setPlano((anterior) =>
-          listaPlanos.includes(anterior) ? anterior : (listaPlanos[0] ?? "Avulso")
-        );
 
         setBarbeiroId((anterior) => {
           if (lista.some((item) => item.id === anterior)) {
@@ -107,7 +130,6 @@ export default function AgendamentoPage() {
         });
       } catch (erro) {
         console.error("Erro ao carregar dados:", erro);
-        setPlanosDisponiveis(planosPadrao);
       }
     }
 
@@ -118,6 +140,7 @@ export default function AgendamentoPage() {
         setClienteTelefone("Seu Numero");
         setClienteEmail("");
         setClienteDetectado(false);
+        setAssinaturaCliente(null);
         setStatusAcesso("negado");
         return;
       }
@@ -140,6 +163,48 @@ export default function AgendamentoPage() {
       window.removeEventListener("storage", atualizarSessaoCliente);
     };
   }, []);
+
+  useEffect(() => {
+    async function carregarAssinaturaCliente() {
+      if (statusAcesso !== "permitido") {
+        setAssinaturaCliente(null);
+        return;
+      }
+
+      const telefoneLimpo = clienteTelefone.trim();
+      if (!telefoneLimpo) {
+        setAssinaturaCliente(null);
+        return;
+      }
+
+      setCarregandoPlano(true);
+
+      try {
+        const response = await fetch(
+          `/api/assinaturas?clienteTelefone=${encodeURIComponent(telefoneLimpo)}`,
+          { cache: "no-store" }
+        );
+
+        const resultado = (await response.json()) as {
+          assinatura?: AssinaturaClienteApi | null;
+        };
+
+        if (!response.ok) {
+          setAssinaturaCliente(null);
+          setCarregandoPlano(false);
+          return;
+        }
+
+        setAssinaturaCliente(resultado.assinatura ?? null);
+      } catch {
+        setAssinaturaCliente(null);
+      } finally {
+        setCarregandoPlano(false);
+      }
+    }
+
+    void carregarAssinaturaCliente();
+  }, [clienteTelefone, statusAcesso]);
 
   useEffect(() => {
     async function carregarHorariosOcupados() {
@@ -183,7 +248,7 @@ export default function AgendamentoPage() {
       id: crypto.randomUUID(),
       clienteNome,
       clienteTelefone,
-      plano,
+      plano: planoReconhecido,
       servicoId: servicoSelecionado.id,
       servicoNome: servicoSelecionado.nome,
       barbeiroId: barbeiroSelecionado.id,
@@ -247,7 +312,7 @@ export default function AgendamentoPage() {
     <section className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="text-5xl text-amber-950">Agendamento</h1>
       <p className="mt-2 text-amber-950/80">
-        Escolha plano, barbeiro, servico, data e horario disponivel.
+        Escolha barbeiro, servico, data e horario disponivel.
       </p>
 
       <div className="mt-4 rounded-2xl border border-emerald-700/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
@@ -280,18 +345,17 @@ export default function AgendamentoPage() {
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-semibold text-amber-900">Plano</span>
-          <select
-            className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
-            value={plano}
-            onChange={(event) => setPlano(event.target.value as Plano)}
-          >
-            {planosDisponiveis.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+          <span className="text-sm font-semibold text-amber-900">Plano reconhecido</span>
+          <input
+            className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2 font-semibold text-amber-950"
+            value={carregandoPlano ? "Verificando plano..." : planoReconhecido}
+            readOnly
+          />
+          <p className="text-xs text-amber-900/80">
+            {assinaturaAtivaEmDia
+              ? `Assinatura ${assinaturaCliente?.plano} ativa e em dia.`
+              : "Sem assinatura valida em dia. Agendamento sera como Avulso."}
+          </p>
         </label>
 
         <div className="space-y-2 sm:col-span-2 lg:col-span-3">
@@ -382,7 +446,7 @@ export default function AgendamentoPage() {
         <div className="sm:col-span-2 lg:col-span-3">
           <button
             type="submit"
-            disabled={enviando || listaBarbeiros.length === 0}
+            disabled={enviando || listaBarbeiros.length === 0 || carregandoPlano}
             className="rounded-xl bg-[var(--brand)] px-6 py-3 font-semibold text-white disabled:opacity-50"
           >
             {enviando ? "Confirmando..." : "Confirmar agendamento"}

@@ -101,10 +101,13 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       clienteTelefone?: string;
-      acao?: "cancelar";
+      clienteNome?: string;
+      plano?: Plano;
+      acao?: "cancelar" | "ativar";
     };
 
     const clienteTelefone = (body.clienteTelefone ?? "").trim();
+    const clienteNome = (body.clienteNome ?? "").trim();
 
     if (!clienteTelefone) {
       return NextResponse.json(
@@ -113,29 +116,62 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const assinaturaAtual = await prisma.assinaturaCliente.findUnique({
-      where: { clienteTelefone },
-    });
-
-    if (!assinaturaAtual) {
-      return NextResponse.json(
-        { error: "Assinatura nao encontrada." },
-        { status: 404 }
-      );
-    }
-
-    if (body.acao !== "cancelar") {
+    if (body.acao !== "cancelar" && body.acao !== "ativar") {
       return NextResponse.json(
         { error: "Acao invalida para assinatura." },
         { status: 400 }
       );
     }
 
-    const assinatura = await prisma.assinaturaCliente.update({
+    const assinaturaAtual = await prisma.assinaturaCliente.findUnique({
       where: { clienteTelefone },
-      data: {
-        status: "Cancelada",
-        canceladoEm: new Date(),
+    });
+
+    if (body.acao === "cancelar") {
+      if (!assinaturaAtual) {
+        return NextResponse.json(
+          { error: "Assinatura nao encontrada." },
+          { status: 404 }
+        );
+      }
+
+      const assinatura = await prisma.assinaturaCliente.update({
+        where: { clienteTelefone },
+        data: {
+          status: "Cancelada",
+          canceladoEm: new Date(),
+        },
+      });
+
+      return NextResponse.json({ assinatura });
+    }
+
+    const planoDestino = body.plano ?? assinaturaAtual?.plano ?? "Mensal";
+    if (!planoAssinavel(planoDestino)) {
+      return NextResponse.json(
+        { error: "Informe um plano assinavel para ativar a assinatura." },
+        { status: 400 }
+      );
+    }
+
+    const nomeDestino = clienteNome || assinaturaAtual?.clienteNome || "Cliente";
+
+    const assinatura = await prisma.assinaturaCliente.upsert({
+      where: { clienteTelefone },
+      update: {
+        clienteNome: nomeDestino,
+        plano: planoDestino,
+        status: "Ativa",
+        canceladoEm: null,
+        proximaCobrancaEm: dataProximaCobranca(),
+      },
+      create: {
+        id: `assinatura-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        clienteNome: nomeDestino,
+        clienteTelefone,
+        plano: planoDestino,
+        status: "Ativa",
+        proximaCobrancaEm: dataProximaCobranca(),
       },
     });
 

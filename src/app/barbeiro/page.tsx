@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Agendamento, Barbeiro } from "@/types";
 import { horariosPadrao } from "@/lib/mock-data";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const BARBEIRO_SESSAO_KEY = "barber_barbeiro_sessao";
 const AUTH_EVENT = "barber-auth-change";
@@ -24,6 +25,26 @@ export default function BarbeiroPage() {
   const [barbeiroSessao, setBarbeiroSessao] = useState<BarbeiroSessao | null>(null);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
   const [mensagemAcesso, setMensagemAcesso] = useState("");
+  const [mensagemOperacao, setMensagemOperacao] = useState("");
+  const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<Agendamento | null>(null);
+  const [agendamentoEmEdicao, setAgendamentoEmEdicao] = useState<Agendamento | null>(null);
+  const [operandoAgendamentoId, setOperandoAgendamentoId] = useState("");
+  const [reagendamentoForm, setReagendamentoForm] = useState({
+    data: "",
+    horario: "",
+    barbeiroId: "",
+  });
+
+  function horarioJaPassou(data: string, horario: string) {
+    const dataHora = new Date(`${data}T${horario}:00`);
+    return Number.isNaN(dataHora.getTime()) || dataHora <= new Date();
+  }
+
+  async function carregarAgendamentos() {
+    const response = await fetch("/api/agendamentos", { cache: "no-store" });
+    const resultado = (await response.json()) as { agendamentos: Agendamento[] };
+    setAgendamentos(resultado.agendamentos ?? []);
+  }
 
   useEffect(() => {
     function sincronizarSessaoBarbeiro() {
@@ -116,13 +137,7 @@ export default function BarbeiroPage() {
       return;
     }
 
-    async function carregar() {
-      const response = await fetch("/api/agendamentos", { cache: "no-store" });
-      const resultado = (await response.json()) as { agendamentos: Agendamento[] };
-      setAgendamentos(resultado.agendamentos ?? []);
-    }
-
-    void carregar();
+    void carregarAgendamentos();
   }, [statusAcesso]);
 
   const hoje = new Date().toISOString().slice(0, 10);
@@ -166,6 +181,113 @@ export default function BarbeiroPage() {
     () => agendaPessoal.filter((slot) => !slot.agendamento).length,
     [agendaPessoal]
   );
+
+  const barbeirosAtivos = useMemo(
+    () => listaBarbeiros.filter((item) => item.ativo),
+    [listaBarbeiros]
+  );
+
+  const horariosDisponiveisReagendamento = useMemo(() => {
+    if (!agendamentoEmEdicao || !reagendamentoForm.data || !reagendamentoForm.barbeiroId) {
+      return [] as string[];
+    }
+
+    const ocupados = new Set(
+      agendamentos
+        .filter(
+          (item) =>
+            item.id !== agendamentoEmEdicao.id &&
+            item.status === "Confirmado" &&
+            item.data === reagendamentoForm.data &&
+            item.barbeiroId === reagendamentoForm.barbeiroId
+        )
+        .map((item) => item.horario)
+    );
+
+    return horariosPadrao.filter((horario) => {
+      if (ocupados.has(horario)) {
+        return false;
+      }
+
+      return !horarioJaPassou(reagendamentoForm.data, horario);
+    });
+  }, [agendamentos, agendamentoEmEdicao, reagendamentoForm.barbeiroId, reagendamentoForm.data]);
+
+  function abrirModalReagendamento(agendamento: Agendamento) {
+    setMensagemOperacao("");
+    setAgendamentoEmEdicao(agendamento);
+    setReagendamentoForm({
+      data: agendamento.data,
+      horario: agendamento.horario,
+      barbeiroId: agendamento.barbeiroId,
+    });
+  }
+
+  async function cancelarAgendamentoSelecionado() {
+    if (!agendamentoParaCancelar) {
+      return;
+    }
+
+    const agendamento = agendamentoParaCancelar;
+    setOperandoAgendamentoId(agendamento.id);
+    setMensagemOperacao("");
+
+    const response = await fetch(`/api/agendamentos/${agendamento.id}/cancelar`, {
+      method: "PATCH",
+      headers: {
+        "x-barbeiro-id": barbeiroSessao?.id ?? "",
+      },
+    });
+
+    if (!response.ok) {
+      const erro = (await response.json()) as { error?: string };
+      setMensagemOperacao(erro.error ?? "Nao foi possivel cancelar o agendamento.");
+      setOperandoAgendamentoId("");
+      return;
+    }
+
+    await carregarAgendamentos();
+    setOperandoAgendamentoId("");
+    setAgendamentoParaCancelar(null);
+    setMensagemOperacao("Agendamento cancelado com sucesso.");
+  }
+
+  async function salvarReagendamento(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!agendamentoEmEdicao) {
+      return;
+    }
+
+    if (!reagendamentoForm.data || !reagendamentoForm.horario || !reagendamentoForm.barbeiroId) {
+      setMensagemOperacao("Preencha data, horario e barbeiro para reagendar.");
+      return;
+    }
+
+    setOperandoAgendamentoId(agendamentoEmEdicao.id);
+    setMensagemOperacao("");
+
+    const response = await fetch(`/api/agendamentos/${agendamentoEmEdicao.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-barbeiro-id": barbeiroSessao?.id ?? "",
+      },
+      body: JSON.stringify(reagendamentoForm),
+    });
+
+    if (!response.ok) {
+      const erro = (await response.json()) as { error?: string };
+      setMensagemOperacao(erro.error ?? "Nao foi possivel reagendar o atendimento.");
+      setOperandoAgendamentoId("");
+      return;
+    }
+
+    await carregarAgendamentos();
+    setOperandoAgendamentoId("");
+    setAgendamentoEmEdicao(null);
+    setMensagemOperacao("Agendamento atualizado com sucesso.");
+  }
 
   if (statusAcesso === "carregando") {
     return (
@@ -211,6 +333,11 @@ export default function BarbeiroPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-amber-950">Painel do Barbeiro</h1>
         <p className="mt-2 text-amber-950/70">Visualize sua agenda e horários disponíveis</p>
+        {mensagemOperacao && (
+          <p className="mt-3 rounded-xl border border-amber-900/20 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {mensagemOperacao}
+          </p>
+        )}
       </div>
 
       {/* Perfil do barbeiro logado */}
@@ -290,9 +417,29 @@ export default function BarbeiroPage() {
               {agendamento ? (
                 <div className="space-y-1 text-sm">
                   <p className="font-semibold text-amber-950">{agendamento.clienteNome}</p>
+                  <p className="text-amber-900/75">WhatsApp: {agendamento.clienteTelefone}</p>
                   <p className="text-amber-900/75">{agendamento.servicoNome}</p>
                   <div className="mt-2 inline-block rounded bg-amber-200 px-2 py-1 text-xs font-medium text-amber-900">
                     Confirmado
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => abrirModalReagendamento(agendamento)}
+                      disabled={operandoAgendamentoId === agendamento.id}
+                      className="rounded-md border border-amber-900/20 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50 disabled:opacity-60"
+                    >
+                      Editar / Reagendar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAgendamentoParaCancelar(agendamento)}
+                      disabled={operandoAgendamentoId === agendamento.id}
+                      className="rounded-md border border-red-700/20 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-60"
+                    >
+                      Cancelar agendamento
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -308,6 +455,118 @@ export default function BarbeiroPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(agendamentoParaCancelar)}
+        title="Cancelar agendamento"
+        description={
+          agendamentoParaCancelar
+            ? `Deseja cancelar o atendimento de ${agendamentoParaCancelar.clienteNome} as ${agendamentoParaCancelar.horario}?`
+            : ""
+        }
+        note="Esse horario sera liberado novamente para novos agendamentos."
+        confirmLabel="Sim, cancelar"
+        busyLabel="Cancelando..."
+        busy={Boolean(
+          agendamentoParaCancelar && operandoAgendamentoId === agendamentoParaCancelar.id
+        )}
+        onCancel={() => setAgendamentoParaCancelar(null)}
+        onConfirm={cancelarAgendamentoSelecionado}
+      />
+
+      {agendamentoEmEdicao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-amber-900/10 bg-white p-6 shadow-xl">
+            <h2 className="text-2xl font-bold text-amber-950">Editar agendamento</h2>
+            <p className="mt-2 text-sm text-amber-900/85">
+              Reagende ou realoque o cliente <strong>{agendamentoEmEdicao.clienteNome}</strong>.
+            </p>
+
+            <form onSubmit={salvarReagendamento} className="mt-5 space-y-4">
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-amber-900">Nova data</span>
+                <input
+                  type="date"
+                  value={reagendamentoForm.data}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) =>
+                    setReagendamentoForm((anterior) => ({
+                      ...anterior,
+                      data: event.target.value,
+                      horario: "",
+                    }))
+                  }
+                  className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-amber-950"
+                  required
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-amber-900">Barbeiro</span>
+                <select
+                  value={reagendamentoForm.barbeiroId}
+                  onChange={(event) =>
+                    setReagendamentoForm((anterior) => ({
+                      ...anterior,
+                      barbeiroId: event.target.value,
+                      horario: "",
+                    }))
+                  }
+                  className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-amber-950"
+                >
+                  {barbeirosAtivos.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-amber-900">Novo horario</span>
+                <select
+                  value={reagendamentoForm.horario}
+                  onChange={(event) =>
+                    setReagendamentoForm((anterior) => ({
+                      ...anterior,
+                      horario: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-amber-950"
+                  required
+                >
+                  <option value="">Selecione um horario</option>
+                  {horariosDisponiveisReagendamento.map((horario) => (
+                    <option key={horario} value={horario}>
+                      {horario}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAgendamentoEmEdicao(null)}
+                  disabled={operandoAgendamentoId === agendamentoEmEdicao.id}
+                  className="rounded-lg border border-amber-900/20 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-50 disabled:opacity-60"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="submit"
+                  disabled={operandoAgendamentoId === agendamentoEmEdicao.id}
+                  className="rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-950 disabled:opacity-60"
+                >
+                  {operandoAgendamentoId === agendamentoEmEdicao.id
+                    ? "Salvando..."
+                    : "Salvar alteracoes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

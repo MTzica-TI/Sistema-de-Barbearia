@@ -8,6 +8,18 @@ function agendamentoJaPassou(data: string, horario: string) {
   return Number.isNaN(dataHora.getTime()) || dataHora <= new Date();
 }
 
+function planoAssinavel(plano: Agendamento["plano"]) {
+  return plano === "Mensal" || plano === "Premium";
+}
+
+function assinaturaEmDia(proximaCobrancaEm: Date | null) {
+  if (!proximaCobrancaEm) {
+    return false;
+  }
+
+  return proximaCobrancaEm.getTime() >= Date.now();
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const data = searchParams.get("data");
@@ -89,6 +101,53 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (planoAssinavel(body.plano)) {
+    const assinatura = await prisma.assinaturaCliente.findUnique({
+      where: {
+        clienteTelefone: body.clienteTelefone,
+      },
+      select: {
+        plano: true,
+        status: true,
+        proximaCobrancaEm: true,
+      },
+    });
+
+    if (!assinatura) {
+      return NextResponse.json(
+        {
+          error:
+            "Voce precisa ter uma assinatura ativa para agendar com plano mensal ou premium.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (assinatura.status !== "Ativa") {
+      return NextResponse.json(
+        { error: "Sua assinatura esta inativa. Regularize para continuar agendando." },
+        { status: 403 }
+      );
+    }
+
+    if (assinatura.plano !== body.plano) {
+      return NextResponse.json(
+        { error: "O plano selecionado nao corresponde ao plano ativo da sua assinatura." },
+        { status: 403 }
+      );
+    }
+
+    if (!assinaturaEmDia(assinatura.proximaCobrancaEm)) {
+      return NextResponse.json(
+        {
+          error:
+            "Sua assinatura nao esta em dia. Regularize o pagamento para liberar novos agendamentos.",
+        },
+        { status: 403 }
+      );
+    }
+  }
+
   const agendamento = await prisma.agendamento.create({
     data: {
       id: body.id,
@@ -105,36 +164,6 @@ export async function POST(request: NextRequest) {
       pagamentoStatus: body.pagamentoStatus,
     },
   });
-
-  if (body.plano === "Mensal" || body.plano === "Premium") {
-    try {
-      const proximaCobrancaEm = new Date();
-      proximaCobrancaEm.setDate(proximaCobrancaEm.getDate() + 30);
-
-      await prisma.assinaturaCliente.upsert({
-        where: {
-          clienteTelefone: body.clienteTelefone,
-        },
-        update: {
-          clienteNome: body.clienteNome,
-          plano: body.plano,
-          status: "Ativa",
-          canceladoEm: null,
-          proximaCobrancaEm,
-        },
-        create: {
-          id: `assinatura-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-          clienteNome: body.clienteNome,
-          clienteTelefone: body.clienteTelefone,
-          plano: body.plano,
-          status: "Ativa",
-          proximaCobrancaEm,
-        },
-      });
-    } catch (error) {
-      console.error("Erro ao sincronizar assinatura do cliente:", error);
-    }
-  }
 
   return NextResponse.json({ agendamento }, { status: 201 });
 }

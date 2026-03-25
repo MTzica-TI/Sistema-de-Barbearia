@@ -76,6 +76,8 @@ export default function AdminPage() {
   const [paginaClientes, setPaginaClientes] = useState(1);
   const [salvandoDisponibilidadeId, setSalvandoDisponibilidadeId] = useState("");
   const [salvandoPerfilId, setSalvandoPerfilId] = useState("");
+  const [processandoAssinaturaClienteTelefone, setProcessandoAssinaturaClienteTelefone] =
+    useState("");
   const [criandoPerfilBarbeiro, setCriandoPerfilBarbeiro] = useState(false);
   const [excluindoPerfilId, setExcluindoPerfilId] = useState("");
   const [barbeiroParaExcluir, setBarbeiroParaExcluir] = useState<Barbeiro | null>(null);
@@ -515,6 +517,53 @@ export default function AdminPage() {
     );
     setMensagem(`Perfil de ${resultado.barbeiro.nome} atualizado com sucesso.`);
     setSalvandoPerfilId("");
+  }
+
+  async function alternarPlanoMensalCliente(cliente: {
+    nome: string;
+    telefone: string;
+    assinaturaPlano: Plano | null;
+    assinaturaAtiva: boolean;
+  }) {
+    setMensagem("");
+    setProcessandoAssinaturaClienteTelefone(cliente.telefone);
+
+    const acao = cliente.assinaturaAtiva ? "cancelar" : "ativar";
+    const response = await fetch("/api/assinaturas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clienteTelefone: cliente.telefone,
+        clienteNome: cliente.nome,
+        plano: cliente.assinaturaPlano ?? "Mensal",
+        acao,
+      }),
+    });
+
+    const resultado = (await response.json()) as {
+      assinatura?: AssinaturaClienteResumo;
+      error?: string;
+    };
+
+    if (!response.ok || !resultado.assinatura) {
+      setMensagem(resultado.error ?? "Nao foi possivel atualizar o plano do cliente.");
+      setProcessandoAssinaturaClienteTelefone("");
+      return;
+    }
+
+    setAssinaturasClientes((anterior) => {
+      const semCliente = anterior.filter(
+        (item) => item.clienteTelefone !== resultado.assinatura?.clienteTelefone
+      );
+      return [resultado.assinatura as AssinaturaClienteResumo, ...semCliente];
+    });
+
+    setMensagem(
+      resultado.assinatura.status === "Ativa"
+        ? `Plano de ${cliente.nome} ativado com sucesso.`
+        : `Plano de ${cliente.nome} desativado com sucesso.`
+    );
+    setProcessandoAssinaturaClienteTelefone("");
   }
 
   async function criarPerfilBarbeiro(event: React.FormEvent<HTMLFormElement>) {
@@ -1352,6 +1401,28 @@ export default function AdminPage() {
                   Agendamentos totais: <strong>{cliente.totalAgendamentos}</strong> | Hoje:{" "}
                   <strong>{cliente.agendamentosHoje}</strong>
                 </p>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => alternarPlanoMensalCliente(cliente)}
+                    disabled={
+                      processandoAssinaturaClienteTelefone === cliente.telefone
+                    }
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 ${
+                      cliente.assinaturaAtiva
+                        ? "bg-red-600 hover:bg-red-700"
+                        : "bg-emerald-700 hover:bg-emerald-800"
+                    }`}
+                  >
+                    {processandoAssinaturaClienteTelefone === cliente.telefone
+                      ? "Atualizando..."
+                      : cliente.assinaturaAtiva
+                        ? "Desativar plano"
+                        : cliente.assinaturaPlano
+                          ? `Ativar plano ${cliente.assinaturaPlano}`
+                          : "Ativar plano Mensal"}
+                  </button>
+                </div>
               </div>
             </article>
           ))}
