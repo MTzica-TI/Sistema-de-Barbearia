@@ -137,7 +137,11 @@ export default function BarbeiroPage() {
       return;
     }
 
-    void carregarAgendamentos();
+    const timer = window.setTimeout(() => {
+      void carregarAgendamentos();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [statusAcesso]);
 
   const hoje = new Date().toISOString().slice(0, 10);
@@ -347,19 +351,13 @@ export default function BarbeiroPage() {
         {barbeiroSelecionado && (
           <div className="mt-4 flex items-center gap-4 rounded-xl border-2 border-amber-900/15 bg-amber-50/50 p-4">
             <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-full border-2 border-amber-900/20">
-              {barbeiroSelecionado.fotoUrl ? (
-                <Image
-                  src={barbeiroSelecionado.fotoUrl}
-                  alt={barbeiroSelecionado.nome}
-                  fill
-                  unoptimized
-                  className="object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-amber-200 text-sm font-semibold text-amber-900">
-                  {barbeiroSelecionado.nome.charAt(0)}
-                </div>
-              )}
+              <Image
+                src={barbeiroSelecionado.fotoUrl || "/images/barbeiros/default.svg"}
+                alt={barbeiroSelecionado.nome}
+                fill
+                unoptimized
+                className="object-cover"
+              />
             </div>
             <div>
               <p className="text-lg font-semibold text-amber-950">{barbeiroSelecionado.nome}</p>

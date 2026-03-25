@@ -13,6 +13,14 @@ type BarbeiroSessao = {
   nome: string;
 };
 
+async function lerJsonSeguro<T>(response: Response, fallback: T): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function BarbeiroLoginPage() {
   const router = useRouter();
   const [barbeiros, setBarbeiros] = useState<Barbeiro[]>([]);
@@ -38,7 +46,9 @@ export default function BarbeiroLoginPage() {
 
     async function carregarBarbeiros() {
       const response = await fetch("/api/barbeiros", { cache: "no-store" });
-      const resultado = (await response.json()) as { barbeiros: Barbeiro[] };
+      const resultado = await lerJsonSeguro<{ barbeiros: Barbeiro[] }>(response, {
+        barbeiros: [],
+      });
       const lista = (resultado.barbeiros ?? []).filter((item) => item.ativo);
 
       setBarbeiros(lista);
@@ -114,10 +124,10 @@ export default function BarbeiroLoginPage() {
       }),
     });
 
-    const resultado = (await response.json()) as {
+    const resultado = await lerJsonSeguro<{
       barbeiro?: BarbeiroSessao;
       error?: string;
-    };
+    }>(response, {});
 
     if (!response.ok || !resultado.barbeiro) {
       setMensagem(resultado.error ?? "Nao foi possivel entrar com esse barbeiro.");

@@ -78,6 +78,7 @@ export default function AreaClientePage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
+  const [agoraMs, setAgoraMs] = useState<number | null>(null);
   const [paginaHistorico, setPaginaHistorico] = useState(1);
   const [filtroHistorico, setFiltroHistorico] = useState<FiltroHistorico>("todos");
   const [emailSessaoOriginal, setEmailSessaoOriginal] = useState("");
@@ -112,6 +113,10 @@ export default function AreaClientePage() {
       return false;
     }
 
+    if (agoraMs === null) {
+      return false;
+    }
+
     if (!assinatura.proximaCobrancaEm) {
       return false;
     }
@@ -121,8 +126,16 @@ export default function AreaClientePage() {
       return false;
     }
 
-    return proxima.getTime() >= Date.now();
-  }, [assinatura]);
+    return proxima.getTime() >= agoraMs;
+  }, [agoraMs, assinatura]);
+
+  useEffect(() => {
+    const atualizarAgora = () => setAgoraMs(Date.now());
+    atualizarAgora();
+
+    const intervalo = window.setInterval(atualizarAgora, 60_000);
+    return () => window.clearInterval(intervalo);
+  }, []);
 
   const planoReconhecido = useMemo<Plano>(() => {
     if (
@@ -172,30 +185,20 @@ export default function AreaClientePage() {
   }, [filtroHistorico, historicoCliente]);
 
   const totalPaginasHistorico = Math.ceil(historicoFiltrado.length / 6);
-
-  useEffect(() => {
-    setPaginaHistorico(1);
-  }, [filtroHistorico]);
-
-  useEffect(() => {
+  const paginaHistoricoExibida = useMemo(() => {
     if (totalPaginasHistorico === 0) {
-      if (paginaHistorico !== 1) {
-        setPaginaHistorico(1);
-      }
-      return;
+      return 1;
     }
 
-    if (paginaHistorico > totalPaginasHistorico) {
-      setPaginaHistorico(totalPaginasHistorico);
-    }
+    return Math.min(paginaHistorico, totalPaginasHistorico);
   }, [paginaHistorico, totalPaginasHistorico]);
 
   const historicoPaginado = useMemo(() => {
     const itensPorPagina = 6;
-    const inicio = (paginaHistorico - 1) * itensPorPagina;
+    const inicio = (paginaHistoricoExibida - 1) * itensPorPagina;
     const fim = inicio + itensPorPagina;
     return historicoFiltrado.slice(inicio, fim);
-  }, [historicoFiltrado, paginaHistorico]);
+  }, [historicoFiltrado, paginaHistoricoExibida]);
 
   async function carregarAssinatura(telefoneCliente: string) {
     const telefoneNormalizado = telefoneCliente.trim();
@@ -533,7 +536,10 @@ export default function AreaClientePage() {
             <div className="inline-flex rounded-xl border border-amber-900/20 bg-amber-50 p-1">
               <button
                 type="button"
-                onClick={() => setFiltroHistorico("todos")}
+                onClick={() => {
+                  setFiltroHistorico("todos");
+                  setPaginaHistorico(1);
+                }}
                 className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                   filtroHistorico === "todos"
                     ? "bg-amber-900 text-white shadow-sm"
@@ -544,7 +550,10 @@ export default function AreaClientePage() {
               </button>
               <button
                 type="button"
-                onClick={() => setFiltroHistorico("confirmado")}
+                onClick={() => {
+                  setFiltroHistorico("confirmado");
+                  setPaginaHistorico(1);
+                }}
                 className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                   filtroHistorico === "confirmado"
                     ? "bg-amber-900 text-white shadow-sm"
@@ -555,7 +564,10 @@ export default function AreaClientePage() {
               </button>
               <button
                 type="button"
-                onClick={() => setFiltroHistorico("cancelado")}
+                onClick={() => {
+                  setFiltroHistorico("cancelado");
+                  setPaginaHistorico(1);
+                }}
                 className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                   filtroHistorico === "cancelado"
                     ? "bg-amber-900 text-white shadow-sm"
@@ -600,12 +612,12 @@ export default function AreaClientePage() {
             {totalPaginasHistorico > 1 && historicoFiltrado.length > 0 && (
               <div className="mt-4 flex items-center justify-between border-t border-amber-900/15 pt-4">
                 <p className="text-sm text-amber-900/80">
-                  Pagina {paginaHistorico} de {totalPaginasHistorico} ({historicoFiltrado.length} agendamentos)
+                  Pagina {paginaHistoricoExibida} de {totalPaginasHistorico} ({historicoFiltrado.length} agendamentos)
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPaginaHistorico((p) => Math.max(1, p - 1))}
-                    disabled={paginaHistorico === 1}
+                    disabled={paginaHistoricoExibida === 1}
                     className="rounded-lg border border-amber-900/30 px-3 py-1 text-sm font-medium text-amber-950 hover:bg-amber-50 disabled:opacity-50"
                   >
                     ← Anterior
@@ -614,7 +626,7 @@ export default function AreaClientePage() {
                     onClick={() =>
                       setPaginaHistorico((p) => Math.min(totalPaginasHistorico, p + 1))
                     }
-                    disabled={paginaHistorico === totalPaginasHistorico}
+                    disabled={paginaHistoricoExibida === totalPaginasHistorico}
                     className="rounded-lg border border-amber-900/30 px-3 py-1 text-sm font-medium text-amber-950 hover:bg-amber-50 disabled:opacity-50"
                   >
                     Proxima →

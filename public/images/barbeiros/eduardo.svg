@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" fill="#1F2937"/>
-  <circle cx="256" cy="202" r="96" fill="#F97316"/>
-  <rect x="126" y="302" width="260" height="160" rx="80" fill="#FED7AA"/>
-  <text x="256" y="484" text-anchor="middle" fill="#FFF7ED" font-size="34" font-family="Arial, sans-serif" font-weight="700">Eduardo</text>
-</svg>

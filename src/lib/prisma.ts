@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 declare global {
   var prismaGlobal: PrismaClient | undefined;
@@ -8,8 +8,10 @@ declare global {
 export const prisma =
   globalThis.prismaGlobal ??
   new PrismaClient({
-    adapter: new PrismaBetterSqlite3({
-      url: process.env.DATABASE_URL ?? "file:./dev.db",
+    adapter: new PrismaPg({
+      connectionString:
+        process.env.DATABASE_URL ??
+        "postgresql://postgres:postgres@localhost:5432/sistema_barbearia?schema=public",
     }),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });

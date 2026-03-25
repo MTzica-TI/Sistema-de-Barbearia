@@ -757,19 +757,30 @@ export default function AdminPage() {
       body: JSON.stringify(payload),
     });
 
+    const resultado = await lerJsonSeguro<{ barbeiro?: Barbeiro; error?: string }>(
+      response,
+      {}
+    );
+
     if (!response.ok) {
-      const erro = (await response.json()) as { error?: string };
-      setMensagem(erro.error ?? "Nao foi possivel criar o perfil do barbeiro.");
+      setMensagem(resultado.error ?? "Nao foi possivel criar o perfil do barbeiro.");
       setCriandoPerfilBarbeiro(false);
       return;
     }
 
-    const resultado = (await response.json()) as { barbeiro: Barbeiro };
+    if (!resultado.barbeiro) {
+      setMensagem("Nao foi possivel criar o perfil do barbeiro.");
+      setCriandoPerfilBarbeiro(false);
+      return;
+    }
+
+    const barbeiroCriado = resultado.barbeiro;
+
     setListaBarbeiros((anterior) =>
-      [...anterior, resultado.barbeiro].sort((a, b) => a.nome.localeCompare(b.nome))
+      [...anterior, barbeiroCriado].sort((a, b) => a.nome.localeCompare(b.nome))
     );
     setNovoBarbeiro({ nome: "", especialidade: "", fotoUrl: "", senha: "" });
-    setMensagem(`Perfil de ${resultado.barbeiro.nome} criado com sucesso.`);
+    setMensagem(`Perfil de ${barbeiroCriado.nome} criado com sucesso.`);
     setCriandoPerfilBarbeiro(false);
   }
 
@@ -1147,19 +1158,13 @@ export default function AdminPage() {
               className="grid gap-4 rounded-2xl border border-amber-900/15 bg-white p-4 lg:grid-cols-[96px_1fr_auto]"
             >
               <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-amber-900/20 bg-amber-50">
-                {item.fotoUrl ? (
-                  <Image
-                    src={item.fotoUrl}
-                    alt={`Foto de ${item.nome}`}
-                    fill
-                    unoptimized
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-amber-900/70">
-                    Sem foto
-                  </div>
-                )}
+                <Image
+                  src={item.fotoUrl || "/images/barbeiros/default.svg"}
+                  alt={`Foto de ${item.nome}`}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
               </div>
 
               <div className="grid gap-2 sm:grid-cols-2">

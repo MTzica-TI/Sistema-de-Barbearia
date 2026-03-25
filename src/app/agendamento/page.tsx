@@ -41,6 +41,14 @@ function horarioJaPassou(data: string, horario: string) {
   return dataHora <= new Date();
 }
 
+async function lerJsonSeguro<T>(response: Response, fallback: T): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function AgendamentoPage() {
   const [clienteNome, setClienteNome] = useState("Seu nome aqui");
   const [clienteTelefone, setClienteTelefone] = useState("Seu Numero");
@@ -106,8 +114,11 @@ export default function AgendamentoPage() {
           fetch("/api/servicos", { cache: "no-store" }),
         ]);
 
-        const resultadoBarbeiros = (await resBarbeiros.json()) as { barbeiros: Barbeiro[] };
-        const resultadoServicos = (await resServicos.json()) as Servico[];
+        const resultadoBarbeiros = await lerJsonSeguro<{ barbeiros: Barbeiro[] }>(
+          resBarbeiros,
+          { barbeiros: [] }
+        );
+        const resultadoServicos = await lerJsonSeguro<Servico[]>(resServicos, []);
 
         const lista = resultadoBarbeiros.barbeiros ?? [];
         const listaServicos = Array.isArray(resultadoServicos) ? resultadoServicos : [];
@@ -185,9 +196,9 @@ export default function AgendamentoPage() {
           { cache: "no-store" }
         );
 
-        const resultado = (await response.json()) as {
+        const resultado = await lerJsonSeguro<{
           assinatura?: AssinaturaClienteApi | null;
-        };
+        }>(response, {});
 
         if (!response.ok) {
           setAssinaturaCliente(null);
@@ -216,7 +227,9 @@ export default function AgendamentoPage() {
       const response = await fetch(
         `/api/agendamentos?data=${data}&barbeiroId=${barbeiroId}`
       );
-      const resultado = (await response.json()) as { horariosOcupados: string[] };
+      const resultado = await lerJsonSeguro<{ horariosOcupados: string[] }>(response, {
+        horariosOcupados: [],
+      });
       setHorariosOcupados(resultado.horariosOcupados ?? []);
       setHorario("");
     }
@@ -266,7 +279,7 @@ export default function AgendamentoPage() {
     });
 
     if (!response.ok) {
-      const erro = (await response.json()) as { error?: string };
+      const erro = await lerJsonSeguro<{ error?: string }>(response, {});
       setMensagem(erro.error ?? "Nao foi possivel criar o agendamento.");
       setEnviando(false);
       return;
@@ -278,7 +291,9 @@ export default function AgendamentoPage() {
     const refresh = await fetch(
       `/api/agendamentos?data=${data}&barbeiroId=${barbeiroId}`
     );
-    const resultado = (await refresh.json()) as { horariosOcupados: string[] };
+    const resultado = await lerJsonSeguro<{ horariosOcupados: string[] }>(refresh, {
+      horariosOcupados: [],
+    });
     setHorariosOcupados(resultado.horariosOcupados ?? []);
     setHorario("");
   }
@@ -378,8 +393,8 @@ export default function AgendamentoPage() {
                 }`}
               >
                 <div className="mx-auto mb-2 h-20 w-20 overflow-hidden rounded-full ring-2 ring-amber-200">
-                  <Image
-                    src={item.fotoUrl}
+                    <Image
+                      src={item.fotoUrl || "/images/barbeiros/default.svg"}
                     alt={`Foto do barbeiro ${item.nome}`}
                     width={120}
                     height={120}
