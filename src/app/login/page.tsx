@@ -12,16 +12,19 @@ type ClienteSessao = {
   fotoUrl?: string;
 };
 
-type UsuarioCadastro = ClienteSessao & {
-  senha: string;
-};
-
-const USUARIOS_KEY = "barber_usuarios";
 const SESSAO_KEY = "barber_cliente_sessao";
 const AUTH_EVENT = "barber-auth-change";
 
 function normalizarTelefone(valor: string) {
   return (valor ?? "").replace(/\D/g, "");
+}
+
+async function lerJsonSeguro<T>(response: Response, fallback: T): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 export default function LoginPage() {
@@ -55,23 +58,6 @@ export default function LoginPage() {
     }
   });
 
-  function carregarUsuarios(): UsuarioCadastro[] {
-    if (typeof window === "undefined") {
-      return [];
-    }
-
-    const valorBruto = window.localStorage.getItem(USUARIOS_KEY);
-    if (!valorBruto) {
-      return [];
-    }
-
-    try {
-      return JSON.parse(valorBruto) as UsuarioCadastro[];
-    } catch {
-      return [];
-    }
-  }
-
   function salvarSessao(cliente: ClienteSessao) {
     window.localStorage.setItem(SESSAO_KEY, JSON.stringify(cliente));
     window.dispatchEvent(new Event(AUTH_EVENT));
@@ -85,33 +71,35 @@ export default function LoginPage() {
     setMensagem("Voce saiu da conta com sucesso.");
   }
 
-  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMensagem("");
 
-    const usuarios = carregarUsuarios();
-    const usuario = usuarios.find(
-      (item) =>
-        item.email.toLowerCase() === loginEmail.trim().toLowerCase() &&
-        item.senha === loginSenha
-    );
+    const response = await fetch("/api/clientes/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: loginEmail.trim(),
+        senha: loginSenha,
+      }),
+    });
 
-    if (!usuario) {
-      setMensagem("Email ou senha invalidos.");
+    const resultado = await lerJsonSeguro<{
+      cliente?: ClienteSessao;
+      error?: string;
+    }>(response, {});
+
+    if (!response.ok || !resultado.cliente) {
+      setMensagem(resultado.error ?? "Email ou senha invalidos.");
       return;
     }
 
-    salvarSessao({
-      nome: usuario.nome,
-      email: usuario.email,
-      telefone: usuario.telefone,
-      fotoUrl: usuario.fotoUrl,
-    });
+    salvarSessao(resultado.cliente);
 
     setMensagem("Login realizado. Seus dados foram detectados no agendamento.");
   }
 
-  function handleCadastro(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCadastro(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMensagem("");
 
@@ -120,49 +108,33 @@ export default function LoginPage() {
       return;
     }
 
-    const usuarios = carregarUsuarios();
-    const emailExiste = usuarios.some(
-      (item) => item.email.toLowerCase() === cadastroEmail.trim().toLowerCase()
-    );
-
-    if (emailExiste) {
-      setMensagem("Este email ja esta cadastrado.");
-      return;
-    }
-
-    const telefoneNormalizado = normalizarTelefone(cadastroTelefone.trim());
-    const telefoneExiste = usuarios.some(
-      (item) => normalizarTelefone(item.telefone) === telefoneNormalizado
-    );
-
-    if (telefoneNormalizado && telefoneExiste) {
-      setMensagem("Este telefone ja esta cadastrado.");
-      return;
-    }
-
-    const novoUsuario: UsuarioCadastro = {
-      nome: cadastroNome.trim(),
-      email: cadastroEmail.trim(),
-      telefone: cadastroTelefone.trim(),
-      senha: cadastroSenha,
-    };
-
-    window.localStorage.setItem(
-      USUARIOS_KEY,
-      JSON.stringify([...usuarios, novoUsuario])
-    );
-
-    salvarSessao({
-      nome: novoUsuario.nome,
-      email: novoUsuario.email,
-      telefone: novoUsuario.telefone,
-      fotoUrl: novoUsuario.fotoUrl,
+    const response = await fetch("/api/clientes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nome: cadastroNome.trim(),
+        email: cadastroEmail.trim(),
+        telefone: cadastroTelefone.trim(),
+        senha: cadastroSenha,
+      }),
     });
+
+    const resultado = await lerJsonSeguro<{
+      cliente?: ClienteSessao;
+      error?: string;
+    }>(response, {});
+
+    if (!response.ok || !resultado.cliente) {
+      setMensagem(resultado.error ?? "Nao foi possivel concluir o cadastro.");
+      return;
+    }
+
+    salvarSessao(resultado.cliente);
 
     setMensagem("Cadastro concluido. Seus dados ja foram vinculados ao agendamento.");
     setAbaAtiva("login");
-    setLoginEmail(novoUsuario.email);
-    setLoginSenha(novoUsuario.senha);
+    setLoginEmail(resultado.cliente.email);
+    setLoginSenha(cadastroSenha);
   }
 
   function limparFormularioRecuperacao() {
@@ -172,7 +144,7 @@ export default function LoginPage() {
     setRecConfirmarSenha("");
   }
 
-  function handleRecuperarSenha(event: React.FormEvent<HTMLFormElement>) {
+  async function handleRecuperarSenha(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMensagem("");
 
@@ -194,26 +166,23 @@ export default function LoginPage() {
       return;
     }
 
-    const usuarios = carregarUsuarios();
-    const indiceUsuario = usuarios.findIndex(
-      (item) =>
-        item.email.trim().toLowerCase() === email &&
-        normalizarTelefone(item.telefone) === telefone
-    );
+    const response = await fetch("/api/clientes/recuperar-senha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        telefone,
+        novaSenha: recNovaSenha,
+      }),
+    });
 
-    if (indiceUsuario < 0) {
-      setMensagem("Nao encontramos uma conta com esse email e telefone.");
+    const resultado = await lerJsonSeguro<{ error?: string }>(response, {});
+    if (!response.ok) {
+      setMensagem(resultado.error ?? "Nao foi possivel redefinir a senha.");
       return;
     }
 
-    const usuariosAtualizados = [...usuarios];
-    usuariosAtualizados[indiceUsuario] = {
-      ...usuariosAtualizados[indiceUsuario],
-      senha: recNovaSenha,
-    };
-
-    window.localStorage.setItem(USUARIOS_KEY, JSON.stringify(usuariosAtualizados));
-    setLoginEmail(usuariosAtualizados[indiceUsuario].email);
+    setLoginEmail(email);
     setLoginSenha("");
     limparFormularioRecuperacao();
     setModoRecuperacao(false);

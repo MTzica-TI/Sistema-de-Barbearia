@@ -97,3 +97,14 @@ model AssinaturaCliente {
   canceladoEm      DateTime?
   atualizadoEm     DateTime         @updatedAt
 }
+
+model Cliente {
+  id          String   @id @default(cuid())
+  nome        String
+  email       String   @unique
+  telefone    String   @unique
+  senha       String
+  fotoUrl     String?
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+}

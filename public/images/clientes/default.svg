@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Foto padrão de cliente">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#dff2ff" />
+      <stop offset="100%" stop-color="#b9ddf7" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="32" fill="url(#bg)" />
+  <circle cx="128" cy="92" r="42" fill="#1f5f8a" opacity="0.25" />
+  <path d="M56 224c10-40 38-64 72-64s62 24 72 64" fill="#1f5f8a" opacity="0.25" />
+  <circle cx="128" cy="88" r="32" fill="#1f5f8a" opacity="0.45" />
+  <path d="M80 212c10-24 28-38 48-38s38 14 48 38" fill="#1f5f8a" opacity="0.45" />
+</svg>

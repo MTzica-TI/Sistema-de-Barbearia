@@ -12,7 +12,6 @@ import {
 
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
 const AUTH_EVENT = "barber-auth-change";
-const USUARIOS_KEY = "barber_usuarios";
 const CLIENTE_SESSAO_KEY = "barber_cliente_sessao";
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
@@ -35,26 +34,6 @@ type AssinaturaClienteResumo = {
 
 function normalizarTelefone(valor: string) {
   return (valor ?? "").replace(/\D/g, "");
-}
-
-function carregarClientesDoStorage(): ClienteCadastro[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  const valorBruto = window.localStorage.getItem(USUARIOS_KEY);
-  if (!valorBruto) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(valorBruto) as ClienteCadastro[];
-    return Array.isArray(parsed)
-      ? [...parsed].sort((a, b) => a.nome.localeCompare(b.nome))
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 async function lerJsonSeguro<T>(response: Response, fallback: T): Promise<T> {
@@ -139,13 +118,19 @@ export default function AdminPage() {
   useEffect(() => {
     async function carregar() {
       try {
-        const [responseAgenda, responseBarbeiros, responseServicos, responseAssinaturas] =
-          await Promise.all([
-            fetch("/api/agendamentos", { cache: "no-store" }),
-            fetch("/api/barbeiros", { cache: "no-store" }),
-            fetch("/api/servicos", { cache: "no-store" }),
-            fetch("/api/assinaturas", { cache: "no-store" }),
-          ]);
+        const [
+          responseAgenda,
+          responseBarbeiros,
+          responseServicos,
+          responseAssinaturas,
+          responseClientes,
+        ] = await Promise.all([
+          fetch("/api/agendamentos", { cache: "no-store" }),
+          fetch("/api/barbeiros", { cache: "no-store" }),
+          fetch("/api/servicos", { cache: "no-store" }),
+          fetch("/api/assinaturas", { cache: "no-store" }),
+          fetch("/api/clientes", { cache: "no-store" }),
+        ]);
 
         const resultado = await lerJsonSeguro<{ agendamentos: Agendamento[] }>(
           responseAgenda,
@@ -159,11 +144,14 @@ export default function AdminPage() {
         const resultadoAssinaturas = await lerJsonSeguro<{
           assinaturas?: AssinaturaClienteResumo[];
         }>(responseAssinaturas, { assinaturas: [] });
+        const resultadoClientes = await lerJsonSeguro<{
+          clientes?: ClienteCadastro[];
+        }>(responseClientes, { clientes: [] });
 
         setAgendamentos(resultado.agendamentos ?? []);
         setListaBarbeiros(resultadoBarbeiros.barbeiros ?? []);
         setServicos(Array.isArray(resultadoServicos) ? resultadoServicos : []);
-        setClientes(carregarClientesDoStorage());
+        setClientes((resultadoClientes.clientes ?? []).sort((a, b) => a.nome.localeCompare(b.nome)));
         setAssinaturasClientes(resultadoAssinaturas.assinaturas ?? []);
       } catch {
         setMensagem("Falha ao carregar dados do painel.");
@@ -173,24 +161,6 @@ export default function AdminPage() {
     if (statusAcesso === "permitido") {
       void carregar();
     }
-  }, [statusAcesso]);
-
-  useEffect(() => {
-    if (statusAcesso !== "permitido") {
-      return;
-    }
-
-    function sincronizarClientes() {
-      setClientes(carregarClientesDoStorage());
-    }
-
-    window.addEventListener(AUTH_EVENT, sincronizarClientes);
-    window.addEventListener("storage", sincronizarClientes);
-
-    return () => {
-      window.removeEventListener(AUTH_EVENT, sincronizarClientes);
-      window.removeEventListener("storage", sincronizarClientes);
-    };
   }, [statusAcesso]);
 
   useEffect(() => {
@@ -630,7 +600,7 @@ export default function AdminPage() {
     setFormClienteEdicao({ nome: "", email: "", telefone: "", fotoUrl: "" });
   }
 
-  function salvarEdicaoCliente() {
+  async function salvarEdicaoCliente() {
     if (!clienteEmEdicaoEmail) {
       return;
     }
@@ -645,51 +615,50 @@ export default function AdminPage() {
       return;
     }
 
-    const clientesAtuais = carregarClientesDoStorage();
     const emailOriginal = clienteEmEdicaoEmail.toLowerCase();
-    const indiceCliente = clientesAtuais.findIndex(
-      (item) => item.email.toLowerCase() === emailOriginal
-    );
-
-    if (indiceCliente < 0) {
-      setMensagem("Cliente nao encontrado para edicao.");
-      cancelarEdicaoCliente();
-      return;
-    }
-
-    const emailDuplicado = clientesAtuais.some(
-      (item) => item.email.toLowerCase() === email && item.email.toLowerCase() !== emailOriginal
-    );
-    if (emailDuplicado) {
-      setMensagem("Ja existe outro cliente com este email.");
-      return;
-    }
-
-    const telefoneNormalizado = normalizarTelefone(telefone);
-    const telefoneDuplicado = clientesAtuais.some(
-      (item) =>
-        normalizarTelefone(item.telefone) === telefoneNormalizado &&
-        item.email.toLowerCase() !== emailOriginal
-    );
-    if (telefoneNormalizado && telefoneDuplicado) {
-      setMensagem("Ja existe outro cliente com este telefone.");
-      return;
-    }
 
     setSalvandoClienteEdicao(true);
 
-    const clienteAtualizado: ClienteCadastro = {
-      ...clientesAtuais[indiceCliente],
-      nome,
-      email,
-      telefone,
-      fotoUrl: fotoUrl || undefined,
-    };
+    const response = await fetch("/api/clientes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        emailOriginal,
+        nome,
+        email,
+        telefone,
+        fotoUrl: fotoUrl || null,
+      }),
+    });
 
-    const clientesAtualizados = [...clientesAtuais];
-    clientesAtualizados[indiceCliente] = clienteAtualizado;
+    const resultado = await lerJsonSeguro<{ cliente?: ClienteCadastro; error?: string }>(
+      response,
+      {}
+    );
 
-    window.localStorage.setItem(USUARIOS_KEY, JSON.stringify(clientesAtualizados));
+    if (!response.ok || !resultado.cliente) {
+      setMensagem(resultado.error ?? "Nao foi possivel atualizar o perfil do cliente.");
+      setSalvandoClienteEdicao(false);
+      return;
+    }
+
+    const clienteAtualizado = resultado.cliente;
+
+    setClientes((anterior) =>
+      anterior
+        .map((item) =>
+          item.email.toLowerCase() === emailOriginal
+            ? {
+                ...item,
+                nome: clienteAtualizado.nome,
+                email: clienteAtualizado.email,
+                telefone: clienteAtualizado.telefone,
+                fotoUrl: clienteAtualizado.fotoUrl,
+              }
+            : item
+        )
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+    );
 
     const sessaoClienteBruta = window.localStorage.getItem(CLIENTE_SESSAO_KEY);
     if (sessaoClienteBruta) {
@@ -706,10 +675,10 @@ export default function AdminPage() {
             CLIENTE_SESSAO_KEY,
             JSON.stringify({
               ...sessaoCliente,
-              nome,
-              email,
-              telefone,
-              fotoUrl: fotoUrl || undefined,
+              nome: clienteAtualizado.nome,
+              email: clienteAtualizado.email,
+              telefone: clienteAtualizado.telefone,
+              fotoUrl: clienteAtualizado.fotoUrl,
             })
           );
         }
@@ -718,12 +687,9 @@ export default function AdminPage() {
       }
     }
 
-    setClientes(
-      [...clientesAtualizados].sort((a, b) => a.nome.localeCompare(b.nome))
-    );
     window.dispatchEvent(new Event(AUTH_EVENT));
 
-    setMensagem(`Perfil de ${nome} atualizado com sucesso.`);
+    setMensagem(`Perfil de ${clienteAtualizado.nome} atualizado com sucesso.`);
     setSalvandoClienteEdicao(false);
     cancelarEdicaoCliente();
   }
@@ -1545,19 +1511,13 @@ export default function AdminPage() {
               className="grid gap-3 rounded-xl border border-amber-900/15 bg-white p-3 sm:grid-cols-[72px_1fr]"
             >
               <div className="relative h-16 w-16 overflow-hidden rounded-full border border-amber-900/20 bg-amber-50">
-                {cliente.fotoUrl ? (
-                  <Image
-                    src={cliente.fotoUrl}
-                    alt={`Foto de ${cliente.nome}`}
-                    fill
-                    unoptimized
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-amber-900/70">
-                    Sem foto
-                  </div>
-                )}
+                <Image
+                  src={cliente.fotoUrl || "/images/clientes/default.svg"}
+                  alt={`Foto de ${cliente.nome}`}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
               </div>
 
               <div className="grid gap-1 text-sm text-amber-950/90">

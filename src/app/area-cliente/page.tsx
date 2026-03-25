@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Agendamento, Plano } from "@/types";
 
 const SESSAO_KEY = "barber_cliente_sessao";
-const USUARIOS_KEY = "barber_usuarios";
 const AUTH_EVENT = "barber-auth-change";
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
@@ -17,10 +16,6 @@ type ClienteSessao = {
   email: string;
   telefone: string;
   fotoUrl?: string;
-};
-
-type UsuarioCadastro = ClienteSessao & {
-  senha: string;
 };
 
 type AssinaturaClienteApi = {
@@ -57,21 +52,16 @@ function lerSessaoCliente(): ClienteSessao | null {
   }
 }
 
-function carregarUsuarios(): UsuarioCadastro[] {
-  const valorBruto = window.localStorage.getItem(USUARIOS_KEY);
-  if (!valorBruto) {
-    return [];
-  }
-
-  try {
-    return JSON.parse(valorBruto) as UsuarioCadastro[];
-  } catch {
-    return [];
-  }
-}
-
 function normalizarTelefone(valor: string) {
   return (valor ?? "").replace(/\D/g, "");
+}
+
+async function lerJsonSeguro<T>(response: Response, fallback: T): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 export default function AreaClientePage() {
@@ -317,12 +307,12 @@ export default function AreaClientePage() {
     setMensagemPerfil("Foto removida. Salve o perfil para confirmar.");
   }
 
-  function salvarPerfil() {
+  async function salvarPerfil() {
     setMensagemPerfil("");
 
     const nomeLimpo = nome.trim();
     const emailLimpo = email.trim().toLowerCase();
-    const telefoneLimpo = telefone.trim();
+    const telefoneLimpo = normalizarTelefone(telefone.trim());
 
     if (!nomeLimpo || !emailLimpo || !telefoneLimpo) {
       setMensagemPerfil("Preencha nome, email e telefone para salvar.");
@@ -331,64 +321,46 @@ export default function AreaClientePage() {
 
     setSalvandoPerfil(true);
 
-    const usuarios = carregarUsuarios();
-    const emailJaExiste = usuarios.some(
-      (item) =>
-        item.email.toLowerCase() === emailLimpo &&
-        item.email.toLowerCase() !== emailSessaoOriginal.toLowerCase()
-    );
-
-    if (emailJaExiste) {
-      setMensagemPerfil("Ja existe outra conta com esse email.");
-      setSalvandoPerfil(false);
-      return;
-    }
-
-    const telefoneNormalizado = normalizarTelefone(telefoneLimpo);
-    const telefoneJaExiste = usuarios.some(
-      (item) =>
-        normalizarTelefone(item.telefone) === telefoneNormalizado &&
-        item.email.toLowerCase() !== emailSessaoOriginal.toLowerCase()
-    );
-
-    if (telefoneNormalizado && telefoneJaExiste) {
-      setMensagemPerfil("Ja existe outra conta com esse telefone.");
-      setSalvandoPerfil(false);
-      return;
-    }
-
-    const usuariosAtualizados = usuarios.map((item) => {
-      if (item.email.toLowerCase() !== emailSessaoOriginal.toLowerCase()) {
-        return item;
-      }
-
-      return {
-        ...item,
+    const response = await fetch("/api/clientes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        emailOriginal: emailSessaoOriginal,
         nome: nomeLimpo,
         email: emailLimpo,
         telefone: telefoneLimpo,
-        fotoUrl: fotoUrl || undefined,
-      };
+        fotoUrl: fotoUrl.trim(),
+      }),
     });
 
-    window.localStorage.setItem(USUARIOS_KEY, JSON.stringify(usuariosAtualizados));
+    const resultado = await lerJsonSeguro<{
+      cliente?: ClienteSessao;
+      error?: string;
+    }>(response, {});
+
+    if (!response.ok || !resultado.cliente) {
+      setMensagemPerfil(resultado.error ?? "Nao foi possivel atualizar o perfil.");
+      setSalvandoPerfil(false);
+      return;
+    }
 
     const novaSessao: ClienteSessao = {
-      nome: nomeLimpo,
-      email: emailLimpo,
-      telefone: telefoneLimpo,
-      fotoUrl: fotoUrl || undefined,
+      nome: resultado.cliente.nome,
+      email: resultado.cliente.email,
+      telefone: resultado.cliente.telefone,
+      fotoUrl: resultado.cliente.fotoUrl,
     };
 
     window.localStorage.setItem(SESSAO_KEY, JSON.stringify(novaSessao));
     window.dispatchEvent(new Event(AUTH_EVENT));
 
-    void carregarAssinatura(telefoneLimpo);
+    void carregarAssinatura(novaSessao.telefone);
 
-    setEmailSessaoOriginal(emailLimpo);
-    setNome(nomeLimpo);
-    setEmail(emailLimpo);
-    setTelefone(telefoneLimpo);
+    setEmailSessaoOriginal(novaSessao.email);
+    setNome(novaSessao.nome);
+    setEmail(novaSessao.email);
+    setTelefone(novaSessao.telefone);
+    setFotoUrl(novaSessao.fotoUrl ?? "");
     setMensagemPerfil("Perfil atualizado com sucesso.");
     setSalvandoPerfil(false);
   }
@@ -449,19 +421,13 @@ export default function AreaClientePage() {
         <div className="mt-4 grid gap-4 sm:grid-cols-[140px_1fr]">
           <div className="flex flex-col items-center gap-2">
             <div className="relative h-28 w-28 overflow-hidden rounded-full border border-amber-900/20 bg-white">
-              {fotoUrl ? (
-                <Image
-                  src={fotoUrl}
-                  alt="Foto de perfil do cliente"
-                  fill
-                  unoptimized
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-amber-900/70">
-                  Sem foto
-                </div>
-              )}
+              <Image
+                src={fotoUrl || "/images/clientes/default.svg"}
+                alt="Foto de perfil do cliente"
+                fill
+                unoptimized
+                className="h-full w-full object-cover"
+              />
             </div>
             <label className="cursor-pointer rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-xs font-semibold text-amber-900">
               Alterar foto
