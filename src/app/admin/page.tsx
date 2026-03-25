@@ -91,6 +91,7 @@ export default function AdminPage() {
     nome: "",
     especialidade: "",
     fotoUrl: "",
+    senha: "",
   });
   const [configAssinatura, setConfigAssinatura] = useState<AssinaturaConfig>(
     DEFAULT_ASSINATURA_CONFIG
@@ -735,10 +736,16 @@ export default function AdminPage() {
       nome: novoBarbeiro.nome.trim(),
       especialidade: novoBarbeiro.especialidade.trim(),
       fotoUrl: novoBarbeiro.fotoUrl.trim(),
+      senha: novoBarbeiro.senha.trim(),
     };
 
-    if (!payload.nome || !payload.especialidade) {
-      setMensagem("Informe nome e especialidade para criar o perfil.");
+    if (!payload.nome || !payload.especialidade || !payload.senha) {
+      setMensagem("Informe nome, especialidade e senha para criar o perfil.");
+      return;
+    }
+
+    if (payload.senha.length < 4) {
+      setMensagem("A senha do barbeiro deve ter ao menos 4 caracteres.");
       return;
     }
 
@@ -761,7 +768,7 @@ export default function AdminPage() {
     setListaBarbeiros((anterior) =>
       [...anterior, resultado.barbeiro].sort((a, b) => a.nome.localeCompare(b.nome))
     );
-    setNovoBarbeiro({ nome: "", especialidade: "", fotoUrl: "" });
+    setNovoBarbeiro({ nome: "", especialidade: "", fotoUrl: "", senha: "" });
     setMensagem(`Perfil de ${resultado.barbeiro.nome} criado com sucesso.`);
     setCriandoPerfilBarbeiro(false);
   }
@@ -1087,7 +1094,7 @@ export default function AdminPage() {
         <div className="mt-4 grid gap-3">
           <form
             onSubmit={criarPerfilBarbeiro}
-            className="grid gap-2 rounded-2xl border border-dashed border-amber-900/30 bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_1.2fr_auto]"
+            className="grid gap-2 rounded-2xl border border-dashed border-amber-900/30 bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_1.2fr_1fr_auto]"
           >
             <input
               className="rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm text-amber-950"
@@ -1115,6 +1122,15 @@ export default function AdminPage() {
                 setNovoBarbeiro((anterior) => ({ ...anterior, fotoUrl: event.target.value }))
               }
               placeholder="URL da foto (opcional)"
+            />
+            <input
+              type="password"
+              className="rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm text-amber-950"
+              value={novoBarbeiro.senha}
+              onChange={(event) =>
+                setNovoBarbeiro((anterior) => ({ ...anterior, senha: event.target.value }))
+              }
+              placeholder="Senha do perfil"
             />
             <button
               type="submit"

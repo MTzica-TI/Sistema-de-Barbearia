@@ -13,6 +13,7 @@ export async function garantirBarbeirosNoBanco() {
       nome: item.nome,
       especialidade: item.especialidade,
       fotoUrl: item.fotoUrl,
+      senha: "barber123",
       ativo: item.ativo,
     })),
   });

@@ -7,7 +7,6 @@ import type { Barbeiro } from "@/types";
 
 const BARBEIRO_SESSAO_KEY = "barber_barbeiro_sessao";
 const AUTH_EVENT = "barber-auth-change";
-const SENHA_PADRAO_BARBEIRO = "barber123";
 
 type BarbeiroSessao = {
   id: string;
@@ -91,7 +90,7 @@ export default function BarbeiroLoginPage() {
     };
   }, []);
 
-  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMensagem("");
 
@@ -101,19 +100,39 @@ export default function BarbeiroLoginPage() {
       return;
     }
 
-    if (senha !== SENHA_PADRAO_BARBEIRO) {
-      setMensagem("Senha de barbeiro invalida.");
+    if (!senha.trim()) {
+      setMensagem("Informe a senha do barbeiro.");
+      return;
+    }
+
+    const response = await fetch("/api/barbeiros/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: barbeiroSelecionado.id,
+        senha,
+      }),
+    });
+
+    const resultado = (await response.json()) as {
+      barbeiro?: BarbeiroSessao;
+      error?: string;
+    };
+
+    if (!response.ok || !resultado.barbeiro) {
+      setMensagem(resultado.error ?? "Nao foi possivel entrar com esse barbeiro.");
       return;
     }
 
     const sessao: BarbeiroSessao = {
-      id: barbeiroSelecionado.id,
-      nome: barbeiroSelecionado.nome,
+      id: resultado.barbeiro.id,
+      nome: resultado.barbeiro.nome,
     };
 
     window.localStorage.setItem(BARBEIRO_SESSAO_KEY, JSON.stringify(sessao));
     window.dispatchEvent(new Event(AUTH_EVENT));
     setBarbeiroLogado(sessao);
+    setSenha("");
     router.push("/barbeiro");
   }
 
@@ -186,8 +205,6 @@ export default function BarbeiroLoginPage() {
             >
               Entrar como barbeiro
             </button>
-
-            <p className="text-xs text-amber-900/70">Demo senha: {SENHA_PADRAO_BARBEIRO}</p>
           </form>
         )}
 

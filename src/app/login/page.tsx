@@ -32,6 +32,11 @@ export default function LoginPage() {
   const [cadastroEmail, setCadastroEmail] = useState("");
   const [cadastroTelefone, setCadastroTelefone] = useState("");
   const [cadastroSenha, setCadastroSenha] = useState("");
+  const [modoRecuperacao, setModoRecuperacao] = useState(false);
+  const [recEmail, setRecEmail] = useState("");
+  const [recTelefone, setRecTelefone] = useState("");
+  const [recNovaSenha, setRecNovaSenha] = useState("");
+  const [recConfirmarSenha, setRecConfirmarSenha] = useState("");
   const [mensagem, setMensagem] = useState("");
   const [clienteLogado, setClienteLogado] = useState<ClienteSessao | null>(() => {
     if (typeof window === "undefined") {
@@ -160,6 +165,62 @@ export default function LoginPage() {
     setLoginSenha(novoUsuario.senha);
   }
 
+  function limparFormularioRecuperacao() {
+    setRecEmail("");
+    setRecTelefone("");
+    setRecNovaSenha("");
+    setRecConfirmarSenha("");
+  }
+
+  function handleRecuperarSenha(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMensagem("");
+
+    const email = recEmail.trim().toLowerCase();
+    const telefone = normalizarTelefone(recTelefone.trim());
+
+    if (!email || !telefone || !recNovaSenha || !recConfirmarSenha) {
+      setMensagem("Preencha todos os campos para redefinir a senha.");
+      return;
+    }
+
+    if (recNovaSenha.length < 4) {
+      setMensagem("A nova senha deve ter ao menos 4 caracteres.");
+      return;
+    }
+
+    if (recNovaSenha !== recConfirmarSenha) {
+      setMensagem("A confirmacao da senha nao confere.");
+      return;
+    }
+
+    const usuarios = carregarUsuarios();
+    const indiceUsuario = usuarios.findIndex(
+      (item) =>
+        item.email.trim().toLowerCase() === email &&
+        normalizarTelefone(item.telefone) === telefone
+    );
+
+    if (indiceUsuario < 0) {
+      setMensagem("Nao encontramos uma conta com esse email e telefone.");
+      return;
+    }
+
+    const usuariosAtualizados = [...usuarios];
+    usuariosAtualizados[indiceUsuario] = {
+      ...usuariosAtualizados[indiceUsuario],
+      senha: recNovaSenha,
+    };
+
+    window.localStorage.setItem(USUARIOS_KEY, JSON.stringify(usuariosAtualizados));
+    setLoginEmail(usuariosAtualizados[indiceUsuario].email);
+    setLoginSenha("");
+    limparFormularioRecuperacao();
+    setModoRecuperacao(false);
+    setAbaAtiva("login");
+    setMensagem("Senha redefinida com sucesso. Faca login com a nova senha.");
+  }
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-5xl text-amber-950">Acesso do cliente</h1>
@@ -234,6 +295,22 @@ export default function LoginPage() {
             >
               Entrar
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMensagem("");
+                setModoRecuperacao((anterior) => {
+                  if (anterior) {
+                    limparFormularioRecuperacao();
+                  }
+                  return !anterior;
+                });
+              }}
+              className="w-full rounded-lg border border-amber-900/20 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-50"
+            >
+              {modoRecuperacao ? "Fechar recuperacao de senha" : "Esqueci minha senha"}
+            </button>
           </form>
         ) : (
           <form onSubmit={handleCadastro} className="mt-6 space-y-3">
@@ -275,6 +352,56 @@ export default function LoginPage() {
               className="w-full rounded-lg bg-amber-700 px-4 py-2 font-semibold text-white transition hover:brightness-110"
             >
               Cadastrar
+            </button>
+          </form>
+        )}
+
+        {abaAtiva === "login" && modoRecuperacao && (
+          <form
+            onSubmit={handleRecuperarSenha}
+            className="mt-4 space-y-3 rounded-2xl border border-amber-900/20 bg-amber-50/70 p-4"
+          >
+            <h3 className="text-xl text-amber-900">Recuperar senha</h3>
+            <p className="text-xs text-amber-900/80">
+              Confirme email e telefone para criar uma nova senha.
+            </p>
+            <input
+              className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+              type="email"
+              placeholder="Email da conta"
+              value={recEmail}
+              onChange={(event) => setRecEmail(event.target.value)}
+              required
+            />
+            <input
+              className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+              type="tel"
+              placeholder="Telefone da conta"
+              value={recTelefone}
+              onChange={(event) => setRecTelefone(event.target.value)}
+              required
+            />
+            <input
+              className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+              type="password"
+              placeholder="Nova senha"
+              value={recNovaSenha}
+              onChange={(event) => setRecNovaSenha(event.target.value)}
+              required
+            />
+            <input
+              className="w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+              type="password"
+              placeholder="Confirmar nova senha"
+              value={recConfirmarSenha}
+              onChange={(event) => setRecConfirmarSenha(event.target.value)}
+              required
+            />
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-amber-800 px-4 py-2 font-semibold text-white transition hover:brightness-110"
+            >
+              Redefinir senha
             </button>
           </form>
         )}

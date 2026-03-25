@@ -117,12 +117,14 @@ export async function POST(request: NextRequest) {
     nome?: string;
     especialidade?: string;
     fotoUrl?: string;
+    senha?: string;
     ativo?: boolean;
   };
 
   const nome = body.nome?.trim() ?? "";
   const especialidade = body.especialidade?.trim() ?? "";
   const fotoUrl = body.fotoUrl?.trim() ?? "";
+  const senha = body.senha?.trim() ?? "";
 
   if (!nome) {
     return NextResponse.json({ error: "Nome do barbeiro e obrigatorio." }, { status: 400 });
@@ -132,12 +134,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Especialidade e obrigatoria." }, { status: 400 });
   }
 
+  if (senha.length < 4) {
+    return NextResponse.json(
+      { error: "A senha do barbeiro deve ter ao menos 4 caracteres." },
+      { status: 400 }
+    );
+  }
+
   const barbeiro = await prisma.barbeiro.create({
     data: {
       id: gerarIdBarbeiro(nome),
       nome,
       especialidade,
       fotoUrl: fotoUrl || "/images/barbeiros/default.jpg",
+      senha,
       ativo: typeof body.ativo === "boolean" ? body.ativo : true,
     },
   });
