@@ -11,7 +11,7 @@ export const prisma =
     adapter: new PrismaPg({
       connectionString:
         process.env.DATABASE_URL ??
-        "postgresql://postgres:postgres@localhost:5432/sistema_barbearia?schema=public",
+        "postgresql://postgres:0710@localhost:5432/sistema_barbearia?schema=public",
     }),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
