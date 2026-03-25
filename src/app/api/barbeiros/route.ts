@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { garantirBarbeirosNoBanco } from "@/lib/barbeiros-db";
-
-const FOTO_BARBEIRO_PADRAO = "/images/barbeiros/default.svg";
+import { obterFotoBarbeiro } from "@/lib/barbeiros-fotos";
 
 function gerarIdBarbeiro(nome: string) {
   const base = nome
@@ -33,7 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       barbeiros: barbeiros.map((item) => ({
         ...item,
-        fotoUrl: item.fotoUrl?.trim() ? item.fotoUrl : FOTO_BARBEIRO_PADRAO,
+        fotoUrl: obterFotoBarbeiro(item.fotoUrl),
       })),
     });
   } catch (error) {
@@ -108,7 +107,7 @@ export async function PATCH(request: NextRequest) {
 
   if (typeof body.fotoUrl === "string") {
     const fotoUrl = body.fotoUrl.trim();
-    data.fotoUrl = fotoUrl || FOTO_BARBEIRO_PADRAO;
+    data.fotoUrl = obterFotoBarbeiro(fotoUrl || undefined);
   }
 
   const atualizado = await prisma.barbeiro.update({
@@ -150,7 +149,7 @@ export async function POST(request: NextRequest) {
     }
 
     const id = gerarIdBarbeiro(nome);
-    const foto = fotoUrl || FOTO_BARBEIRO_PADRAO;
+    const foto = obterFotoBarbeiro(fotoUrl || undefined);
     const ativo = typeof body.ativo === "boolean" ? body.ativo : true;
 
     let barbeiro: {
