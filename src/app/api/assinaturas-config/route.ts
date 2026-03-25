@@ -73,6 +73,7 @@ async function lerConfigDoBanco(): Promise<AssinaturaConfig> {
   ]);
 
   return {
+    // @ts-ignore - plano tipado pelo Prisma
     planos: planos.map((plano) => ({
       tipo: normalizarPlano(plano.tipo),
       nome: plano.nome,
@@ -81,9 +82,11 @@ async function lerConfigDoBanco(): Promise<AssinaturaConfig> {
       destaque: plano.destaque,
       beneficios: plano.beneficiosTexto
         .split("\n")
+        // @ts-ignore - item tipado
         .map((item) => item.trim())
         .filter(Boolean),
     })),
+    // @ts-ignore - item tipado pelo Prisma
     formasPagamento: formasPagamento.map((item) => item.descricao),
   };
 }

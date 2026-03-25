@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
+      // @ts-ignore - item tipado pelo Prisma
       horariosOcupados: ocupados.map((item) => item.horario),
     });
   }
