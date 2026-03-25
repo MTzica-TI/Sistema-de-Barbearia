@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Servico } from "@/types";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
 
@@ -25,6 +26,8 @@ export default function ServicosPage() {
   const [salvando, setSalvando] = useState(false);
   const [modoFormulario, setModoFormulario] = useState<ModoFormulario>(null);
   const [servicoEmEdicao, setServicoEmEdicao] = useState<Servico | null>(null);
+  const [servicoParaRemover, setServicoParaRemover] = useState<Servico | null>(null);
+  const [removendoServicoId, setRemovendoServicoId] = useState("");
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -154,15 +157,19 @@ export default function ServicosPage() {
     }
   }
 
-  async function handleRemoverServico(servicoId: string) {
+  async function handleRemoverServico() {
+    if (!servicoParaRemover) {
+      return;
+    }
+
+    const servicoId = servicoParaRemover.id;
+
     if (!adminLogado) {
       setMensagem({ tipo: "erro", texto: "Você precisa estar logado como admin" });
       return;
     }
 
-    if (!confirm("Tem certeza que deseja remover este serviço?")) {
-      return;
-    }
+    setRemovendoServicoId(servicoId);
 
     try {
       const resposta = await fetch(`/api/servicos/${servicoId}`, {
@@ -179,12 +186,16 @@ export default function ServicosPage() {
         texto: "Serviço removido com sucesso!",
       });
 
+      setServicoParaRemover(null);
+
       await carregarServicos();
     } catch (erro) {
       setMensagem({
         tipo: "erro",
         texto: erro instanceof Error ? erro.message : "Erro ao remover serviço",
       });
+    } finally {
+      setRemovendoServicoId("");
     }
   }
 
@@ -238,7 +249,7 @@ export default function ServicosPage() {
                   Editar
                 </button>
                 <button
-                  onClick={() => handleRemoverServico(servico.id)}
+                  onClick={() => setServicoParaRemover(servico)}
                   className="flex-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
                 >
                   Remover
@@ -337,6 +348,22 @@ export default function ServicosPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(servicoParaRemover)}
+        title="Remover servico"
+        description={
+          servicoParaRemover
+            ? `Tem certeza que deseja remover o servico ${servicoParaRemover.nome}?`
+            : ""
+        }
+        note="A remocao impacta o agendamento e nao podera ser desfeita automaticamente."
+        confirmLabel="Sim, remover"
+        busyLabel="Removendo..."
+        busy={Boolean(servicoParaRemover && removendoServicoId === servicoParaRemover.id)}
+        onCancel={() => setServicoParaRemover(null)}
+        onConfirm={handleRemoverServico}
+      />
     </section>
   );
 }

@@ -23,6 +23,7 @@ export default function BarbeiroPage() {
   const [listaBarbeiros, setListaBarbeiros] = useState<Barbeiro[]>([]);
   const [barbeiroSessao, setBarbeiroSessao] = useState<BarbeiroSessao | null>(null);
   const [statusAcesso, setStatusAcesso] = useState<StatusAcesso>("carregando");
+  const [mensagemAcesso, setMensagemAcesso] = useState("");
 
   useEffect(() => {
     function sincronizarSessaoBarbeiro() {
@@ -70,6 +71,41 @@ export default function BarbeiroPage() {
       const lista = resultado.barbeiros ?? [];
 
       setListaBarbeiros(lista);
+
+      const valorBruto = window.localStorage.getItem(BARBEIRO_SESSAO_KEY);
+      if (!valorBruto) {
+        return;
+      }
+
+      try {
+        const sessaoAtual = JSON.parse(valorBruto) as BarbeiroSessao;
+        const perfilAtivo = lista.find((item) => item.id === sessaoAtual.id && item.ativo);
+
+        if (!perfilAtivo) {
+          window.localStorage.removeItem(BARBEIRO_SESSAO_KEY);
+          window.dispatchEvent(new Event(AUTH_EVENT));
+          setBarbeiroSessao(null);
+          setStatusAcesso("negado");
+          setMensagemAcesso("Seu perfil foi desativado ou removido pelo administrador.");
+          return;
+        }
+
+        if (perfilAtivo.nome !== sessaoAtual.nome) {
+          const sessaoAtualizada: BarbeiroSessao = {
+            id: perfilAtivo.id,
+            nome: perfilAtivo.nome,
+          };
+
+          window.localStorage.setItem(BARBEIRO_SESSAO_KEY, JSON.stringify(sessaoAtualizada));
+          window.dispatchEvent(new Event(AUTH_EVENT));
+          setBarbeiroSessao(sessaoAtualizada);
+        }
+      } catch {
+        window.localStorage.removeItem(BARBEIRO_SESSAO_KEY);
+        window.dispatchEvent(new Event(AUTH_EVENT));
+        setBarbeiroSessao(null);
+        setStatusAcesso("negado");
+      }
     }
 
     void carregarBarbeiros();
@@ -146,6 +182,11 @@ export default function BarbeiroPage() {
         <p className="mt-3 text-amber-950/80">
           Esta area e exclusiva para barbeiros autenticados.
         </p>
+        {mensagemAcesso && (
+          <p className="mt-3 rounded-xl border border-amber-900/20 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {mensagemAcesso}
+          </p>
+        )}
         <div className="mt-5 flex gap-3">
           <Link
             href="/barbeiro/login"

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { Agendamento, Barbeiro, Plano, Servico } from "@/types";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   DEFAULT_ASSINATURA_CONFIG,
   type AssinaturaConfig,
@@ -75,6 +76,15 @@ export default function AdminPage() {
   const [paginaClientes, setPaginaClientes] = useState(1);
   const [salvandoDisponibilidadeId, setSalvandoDisponibilidadeId] = useState("");
   const [salvandoPerfilId, setSalvandoPerfilId] = useState("");
+  const [criandoPerfilBarbeiro, setCriandoPerfilBarbeiro] = useState(false);
+  const [excluindoPerfilId, setExcluindoPerfilId] = useState("");
+  const [barbeiroParaExcluir, setBarbeiroParaExcluir] = useState<Barbeiro | null>(null);
+  const [indicePlanoParaExcluir, setIndicePlanoParaExcluir] = useState<number | null>(null);
+  const [novoBarbeiro, setNovoBarbeiro] = useState({
+    nome: "",
+    especialidade: "",
+    fotoUrl: "",
+  });
   const [configAssinatura, setConfigAssinatura] = useState<AssinaturaConfig>(
     DEFAULT_ASSINATURA_CONFIG
   );
@@ -311,6 +321,19 @@ export default function AdminPage() {
 
   const totalPaginasClientes = Math.ceil(resumoClientes.length / 10);
 
+  useEffect(() => {
+    if (totalPaginasClientes === 0) {
+      if (paginaClientes !== 1) {
+        setPaginaClientes(1);
+      }
+      return;
+    }
+
+    if (paginaClientes > totalPaginasClientes) {
+      setPaginaClientes(totalPaginasClientes);
+    }
+  }, [paginaClientes, totalPaginasClientes]);
+
   const dataSelecionadaFormatada = useMemo(() => {
     const [ano, mes, dia] = dataSelecionada.split("-");
     if (!ano || !mes || !dia) {
@@ -494,6 +517,72 @@ export default function AdminPage() {
     setSalvandoPerfilId("");
   }
 
+  async function criarPerfilBarbeiro(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMensagem("");
+
+    const payload = {
+      nome: novoBarbeiro.nome.trim(),
+      especialidade: novoBarbeiro.especialidade.trim(),
+      fotoUrl: novoBarbeiro.fotoUrl.trim(),
+    };
+
+    if (!payload.nome || !payload.especialidade) {
+      setMensagem("Informe nome e especialidade para criar o perfil.");
+      return;
+    }
+
+    setCriandoPerfilBarbeiro(true);
+
+    const response = await fetch("/api/barbeiros", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const erro = (await response.json()) as { error?: string };
+      setMensagem(erro.error ?? "Nao foi possivel criar o perfil do barbeiro.");
+      setCriandoPerfilBarbeiro(false);
+      return;
+    }
+
+    const resultado = (await response.json()) as { barbeiro: Barbeiro };
+    setListaBarbeiros((anterior) =>
+      [...anterior, resultado.barbeiro].sort((a, b) => a.nome.localeCompare(b.nome))
+    );
+    setNovoBarbeiro({ nome: "", especialidade: "", fotoUrl: "" });
+    setMensagem(`Perfil de ${resultado.barbeiro.nome} criado com sucesso.`);
+    setCriandoPerfilBarbeiro(false);
+  }
+
+  async function confirmarExclusaoPerfilBarbeiro() {
+    if (!barbeiroParaExcluir) {
+      return;
+    }
+
+    const barbeiro = barbeiroParaExcluir;
+
+    setMensagem("");
+    setExcluindoPerfilId(barbeiro.id);
+
+    const response = await fetch(`/api/barbeiros?id=${barbeiro.id}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const erro = (await response.json()) as { error?: string };
+      setMensagem(erro.error ?? "Nao foi possivel excluir o perfil do barbeiro.");
+      setExcluindoPerfilId("");
+      return;
+    }
+
+    setListaBarbeiros((anterior) => anterior.filter((item) => item.id !== barbeiro.id));
+    setMensagem(`Perfil de ${barbeiro.nome} excluido com sucesso.`);
+    setExcluindoPerfilId("");
+    setBarbeiroParaExcluir(null);
+  }
+
   async function persistirConfiguracaoAssinaturas(
     proximaConfig: AssinaturaConfig,
     mensagemSucesso: string
@@ -641,11 +730,12 @@ export default function AdminPage() {
     }
   }
 
-  async function removerPlano(indicePlano: number) {
-    if (!confirm("Tem certeza que deseja remover este plano?")) {
+  async function confirmarRemocaoPlano() {
+    if (indicePlanoParaExcluir === null) {
       return;
     }
 
+    const indicePlano = indicePlanoParaExcluir;
     setSalvandoAssinaturas(true);
     setMensagem("");
 
@@ -656,6 +746,7 @@ export default function AdminPage() {
 
     try {
       await persistirConfiguracaoAssinaturas(proximaConfig, "Plano removido com sucesso.");
+      setIndicePlanoParaExcluir(null);
     } catch (error) {
       const mensagemErro = error instanceof Error ? error.message : "Erro ao salvar assinaturas.";
       setMensagem(mensagemErro);
@@ -746,14 +837,14 @@ export default function AdminPage() {
       <div className="mt-8 rounded-2xl border border-amber-900/20 bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-3xl text-amber-900">Barbeiros e disponibilidade</h2>
-          <div className="flex gap-2">
+          <div className="inline-flex rounded-xl border border-amber-900/20 bg-amber-50 p-1">
             <button
               type="button"
               onClick={() => setFiltroEquipe("todos")}
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                 filtroEquipe === "todos"
-                  ? "bg-amber-900 text-white"
-                  : "border border-amber-900/20 bg-white text-amber-900"
+                  ? "bg-amber-900 text-white shadow-sm"
+                  : "text-amber-900 hover:bg-white"
               }`}
             >
               Todos
@@ -761,10 +852,10 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setFiltroEquipe("ativos")}
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                 filtroEquipe === "ativos"
-                  ? "bg-amber-900 text-white"
-                  : "border border-amber-900/20 bg-white text-amber-900"
+                  ? "bg-amber-900 text-white shadow-sm"
+                  : "text-amber-900 hover:bg-white"
               }`}
             >
               Ativos
@@ -772,10 +863,10 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setFiltroEquipe("inativos")}
-              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                 filtroEquipe === "inativos"
-                  ? "bg-amber-900 text-white"
-                  : "border border-amber-900/20 bg-white text-amber-900"
+                  ? "bg-amber-900 text-white shadow-sm"
+                  : "text-amber-900 hover:bg-white"
               }`}
             >
               Inativos
@@ -783,62 +874,152 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2">
+        <div className="mt-4 grid gap-3">
+          <form
+            onSubmit={criarPerfilBarbeiro}
+            className="grid gap-2 rounded-2xl border border-dashed border-amber-900/30 bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_1.2fr_auto]"
+          >
+            <input
+              className="rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm text-amber-950"
+              value={novoBarbeiro.nome}
+              onChange={(event) =>
+                setNovoBarbeiro((anterior) => ({ ...anterior, nome: event.target.value }))
+              }
+              placeholder="Nome do barbeiro"
+            />
+            <input
+              className="rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm text-amber-950"
+              value={novoBarbeiro.especialidade}
+              onChange={(event) =>
+                setNovoBarbeiro((anterior) => ({
+                  ...anterior,
+                  especialidade: event.target.value,
+                }))
+              }
+              placeholder="Especialidade"
+            />
+            <input
+              className="rounded-lg border border-amber-900/20 bg-white px-3 py-2 text-sm text-amber-950"
+              value={novoBarbeiro.fotoUrl}
+              onChange={(event) =>
+                setNovoBarbeiro((anterior) => ({ ...anterior, fotoUrl: event.target.value }))
+              }
+              placeholder="URL da foto (opcional)"
+            />
+            <button
+              type="submit"
+              disabled={criandoPerfilBarbeiro}
+              className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+            >
+              {criandoPerfilBarbeiro ? "Criando..." : "Criar perfil"}
+            </button>
+          </form>
+
           {equipeFiltrada.map((item) => (
             <article
               key={item.id}
-              className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-900/10 bg-white p-2"
+              className="grid gap-4 rounded-2xl border border-amber-900/15 bg-white p-4 lg:grid-cols-[96px_1fr_auto]"
             >
-              {/* Nome e Status */}
-              <div className="flex min-w-[200px] flex-col gap-1">
-                <input
-                  className="rounded-md border border-amber-900/20 px-2 py-1 text-sm"
-                  value={item.nome}
-                  onChange={(event) =>
-                    atualizarCampoBarbeiro(item.id, "nome", event.target.value)
-                  }
-                  placeholder="Nome"
-                />
-                <p className="text-xs font-semibold text-amber-900">
-                  {item.ativo ? "✓ Ativo" : "✗ Inativo"}
-                </p>
+              <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-amber-900/20 bg-amber-50">
+                {item.fotoUrl ? (
+                  <Image
+                    src={item.fotoUrl}
+                    alt={`Foto de ${item.nome}`}
+                    fill
+                    unoptimized
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-amber-900/70">
+                    Sem foto
+                  </div>
+                )}
               </div>
 
-              {/* Especialidade */}
-              <input
-                className="flex-1 rounded-md border border-amber-900/20 px-2 py-1 text-sm"
-                value={item.especialidade}
-                onChange={(event) =>
-                  atualizarCampoBarbeiro(item.id, "especialidade", event.target.value)
-                }
-                placeholder="Especialidade"
-              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                  Nome
+                  <input
+                    className="rounded-lg border border-amber-900/20 px-3 py-2 text-sm font-normal uppercase tracking-normal text-amber-950"
+                    value={item.nome}
+                    onChange={(event) =>
+                      atualizarCampoBarbeiro(item.id, "nome", event.target.value)
+                    }
+                    placeholder="Nome"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                  Especialidade
+                  <input
+                    className="rounded-lg border border-amber-900/20 px-3 py-2 text-sm font-normal normal-case tracking-normal text-amber-950"
+                    value={item.especialidade}
+                    onChange={(event) =>
+                      atualizarCampoBarbeiro(item.id, "especialidade", event.target.value)
+                    }
+                    placeholder="Especialidade"
+                  />
+                </label>
+                <label className="sm:col-span-2 grid gap-1 text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                  URL da imagem
+                  <input
+                    className="rounded-lg border border-amber-900/20 px-3 py-2 text-sm font-normal normal-case tracking-normal text-amber-950"
+                    value={item.fotoUrl ?? ""}
+                    onChange={(event) =>
+                      atualizarCampoBarbeiro(item.id, "fotoUrl", event.target.value)
+                    }
+                    placeholder="https://..."
+                  />
+                </label>
+                <div className="sm:col-span-2 flex items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      item.ativo
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {item.ativo ? "Perfil ativo" : "Perfil inativo"}
+                  </span>
+                  <p className="text-xs text-amber-900/80">
+                    {item.ativo
+                      ? "Disponivel para novos agendamentos"
+                      : "Indisponivel para novos agendamentos"}
+                  </p>
+                </div>
+              </div>
 
-              {/* Botões */}
-              <div className="flex gap-1">
+              <div className="flex items-start gap-2 lg:flex-col lg:items-stretch">
                 <button
                   type="button"
                   onClick={() => salvarPerfilBarbeiro(item)}
                   disabled={salvandoPerfilId === item.id}
-                  className="whitespace-nowrap rounded-md bg-[var(--brand)] px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                  className="whitespace-nowrap rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 disabled:opacity-60"
                   title="Salvar alterações"
                 >
-                  {salvandoPerfilId === item.id ? "..." : "Salvar"}
+                  {salvandoPerfilId === item.id ? "Salvando..." : "Salvar perfil"}
                 </button>
                 <button
                   type="button"
                   onClick={() => alternarDisponibilidade(item)}
                   disabled={salvandoDisponibilidadeId === item.id}
-                  className={`whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold text-white disabled:opacity-60 ${
+                  className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 disabled:opacity-60 ${
                     item.ativo ? "bg-red-600" : "bg-emerald-700"
                   }`}
                   title={item.ativo ? "Desativar" : "Ativar"}
                 >
                   {salvandoDisponibilidadeId === item.id
-                    ? "..."
+                    ? "Atualizando..."
                     : item.ativo
-                      ? "Desativar"
-                      : "Ativar"}
+                      ? "Desativar perfil"
+                      : "Ativar perfil"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBarbeiroParaExcluir(item)}
+                  disabled={excluindoPerfilId === item.id}
+                  className="whitespace-nowrap rounded-lg border border-red-700/20 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
+                >
+                  {excluindoPerfilId === item.id ? "Excluindo..." : "Excluir perfil"}
                 </button>
               </div>
             </article>
@@ -928,7 +1109,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => removerPlano(indicePlano)}
+                  onClick={() => setIndicePlanoParaExcluir(indicePlano)}
                   className="flex-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
                 >
                   Remover
@@ -960,6 +1141,38 @@ export default function AdminPage() {
           {salvandoAssinaturas ? "Salvando..." : "Salvar formas de pagamento"}
         </button>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(barbeiroParaExcluir)}
+        title="Confirmar exclusao"
+        description={
+          barbeiroParaExcluir
+            ? `Voce esta prestes a excluir o perfil de ${barbeiroParaExcluir.nome}. Esse perfil deixara de aparecer no login de barbeiro e no agendamento.`
+            : ""
+        }
+        note="Se existir agendamento confirmado futuro, a exclusao sera bloqueada para proteger a agenda."
+        confirmLabel="Sim, excluir"
+        busyLabel="Excluindo..."
+        busy={Boolean(barbeiroParaExcluir && excluindoPerfilId === barbeiroParaExcluir.id)}
+        onCancel={() => setBarbeiroParaExcluir(null)}
+        onConfirm={confirmarExclusaoPerfilBarbeiro}
+      />
+
+      <ConfirmDialog
+        open={indicePlanoParaExcluir !== null}
+        title="Remover plano"
+        description={
+          indicePlanoParaExcluir !== null
+            ? `Tem certeza que deseja remover o plano ${configAssinatura.planos[indicePlanoParaExcluir]?.nome ?? "selecionado"}?`
+            : ""
+        }
+        note="Essa acao atualiza a configuracao de assinaturas imediatamente."
+        confirmLabel="Sim, remover"
+        busyLabel="Removendo..."
+        busy={salvandoAssinaturas}
+        onCancel={() => setIndicePlanoParaExcluir(null)}
+        onConfirm={confirmarRemocaoPlano}
+      />
 
       {modoFormularioPlano && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1083,7 +1296,10 @@ export default function AdminPage() {
             className="w-full max-w-sm rounded-lg border border-amber-900/20 bg-white px-3 py-2"
             placeholder="Buscar por nome, email ou telefone"
             value={buscaCliente}
-            onChange={(event) => setBuscaCliente(event.target.value)}
+            onChange={(event) => {
+              setBuscaCliente(event.target.value);
+              setPaginaClientes(1);
+            }}
           />
         </div>
 

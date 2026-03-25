@@ -44,6 +44,39 @@ export default function BarbeiroLoginPage() {
 
       setBarbeiros(lista);
       setBarbeiroId((anterior) => (lista.some((item) => item.id === anterior) ? anterior : (lista[0]?.id ?? "")));
+
+      const valorBruto = window.localStorage.getItem(BARBEIRO_SESSAO_KEY);
+      if (!valorBruto) {
+        return;
+      }
+
+      try {
+        const sessaoAtual = JSON.parse(valorBruto) as BarbeiroSessao;
+        const perfilValido = lista.find((item) => item.id === sessaoAtual.id);
+
+        if (!perfilValido) {
+          window.localStorage.removeItem(BARBEIRO_SESSAO_KEY);
+          window.dispatchEvent(new Event(AUTH_EVENT));
+          setBarbeiroLogado(null);
+          setMensagem("Seu perfil foi desativado ou removido. Fale com o administrador.");
+          return;
+        }
+
+        if (perfilValido.nome !== sessaoAtual.nome) {
+          const sessaoAtualizada: BarbeiroSessao = {
+            id: perfilValido.id,
+            nome: perfilValido.nome,
+          };
+
+          window.localStorage.setItem(BARBEIRO_SESSAO_KEY, JSON.stringify(sessaoAtualizada));
+          window.dispatchEvent(new Event(AUTH_EVENT));
+          setBarbeiroLogado(sessaoAtualizada);
+        }
+      } catch {
+        window.localStorage.removeItem(BARBEIRO_SESSAO_KEY);
+        window.dispatchEvent(new Event(AUTH_EVENT));
+        setBarbeiroLogado(null);
+      }
     }
 
     sincronizarSessao();
@@ -128,6 +161,7 @@ export default function BarbeiroLoginPage() {
                 onChange={(event) => setBarbeiroId(event.target.value)}
                 disabled={barbeiros.length === 0}
               >
+                {barbeiros.length === 0 && <option value="">Sem barbeiros ativos</option>}
                 {barbeiros.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.nome}

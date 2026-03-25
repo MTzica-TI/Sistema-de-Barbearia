@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { garantirBarbeirosNoBanco } from "@/lib/barbeiros-db";
 
+function gerarIdBarbeiro(nome: string) {
+  const base = nome
+    .normalize("NFD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .slice(0, 30);
+
+  return `barb-${base || "perfil"}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function GET(request: NextRequest) {
   await garantirBarbeirosNoBanco();
 
@@ -96,4 +108,88 @@ export async function PATCH(request: NextRequest) {
   });
 
   return NextResponse.json({ barbeiro: atualizado });
+}
+
+export async function POST(request: NextRequest) {
+  await garantirBarbeirosNoBanco();
+
+  const body = (await request.json()) as {
+    nome?: string;
+    especialidade?: string;
+    fotoUrl?: string;
+    ativo?: boolean;
+  };
+
+  const nome = body.nome?.trim() ?? "";
+  const especialidade = body.especialidade?.trim() ?? "";
+  const fotoUrl = body.fotoUrl?.trim() ?? "";
+
+  if (!nome) {
+    return NextResponse.json({ error: "Nome do barbeiro e obrigatorio." }, { status: 400 });
+  }
+
+  if (!especialidade) {
+    return NextResponse.json({ error: "Especialidade e obrigatoria." }, { status: 400 });
+  }
+
+  const barbeiro = await prisma.barbeiro.create({
+    data: {
+      id: gerarIdBarbeiro(nome),
+      nome,
+      especialidade,
+      fotoUrl: fotoUrl || "/images/barbeiros/default.jpg",
+      ativo: typeof body.ativo === "boolean" ? body.ativo : true,
+    },
+  });
+
+  return NextResponse.json({ barbeiro }, { status: 201 });
+}
+
+export async function DELETE(request: NextRequest) {
+  await garantirBarbeirosNoBanco();
+
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id")?.trim();
+
+  if (!id) {
+    return NextResponse.json({ error: "Informe o id do barbeiro." }, { status: 400 });
+  }
+
+  const barbeiro = await prisma.barbeiro.findUnique({
+    where: { id },
+    select: { id: true, nome: true },
+  });
+
+  if (!barbeiro) {
+    return NextResponse.json({ error: "Barbeiro nao encontrado." }, { status: 404 });
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const agendamentoFuturo = await prisma.agendamento.findFirst({
+    where: {
+      barbeiroId: id,
+      status: "Confirmado",
+      data: {
+        gte: hoje,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (agendamentoFuturo) {
+    return NextResponse.json(
+      {
+        error:
+          "Este barbeiro possui agendamentos confirmados futuros. Desative o perfil para bloquear novos agendamentos.",
+      },
+      { status: 409 }
+    );
+  }
+
+  await prisma.barbeiro.delete({ where: { id } });
+
+  return NextResponse.json({
+    success: true,
+    message: `Perfil de ${barbeiro.nome} excluido com sucesso.`,
+  });
 }
