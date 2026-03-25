@@ -20,6 +20,10 @@ const USUARIOS_KEY = "barber_usuarios";
 const SESSAO_KEY = "barber_cliente_sessao";
 const AUTH_EVENT = "barber-auth-change";
 
+function normalizarTelefone(valor: string) {
+  return (valor ?? "").replace(/\D/g, "");
+}
+
 export default function LoginPage() {
   const [abaAtiva, setAbaAtiva] = useState<AbaAuth>("login");
   const [loginEmail, setLoginEmail] = useState("");
@@ -118,6 +122,16 @@ export default function LoginPage() {
 
     if (emailExiste) {
       setMensagem("Este email ja esta cadastrado.");
+      return;
+    }
+
+    const telefoneNormalizado = normalizarTelefone(cadastroTelefone.trim());
+    const telefoneExiste = usuarios.some(
+      (item) => normalizarTelefone(item.telefone) === telefoneNormalizado
+    );
+
+    if (telefoneNormalizado && telefoneExiste) {
+      setMensagem("Este telefone ja esta cadastrado.");
       return;
     }
 

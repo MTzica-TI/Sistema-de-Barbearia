@@ -70,6 +70,10 @@ function carregarUsuarios(): UsuarioCadastro[] {
   }
 }
 
+function normalizarTelefone(valor: string) {
+  return (valor ?? "").replace(/\D/g, "");
+}
+
 export default function AreaClientePage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -333,6 +337,19 @@ export default function AreaClientePage() {
 
     if (emailJaExiste) {
       setMensagemPerfil("Ja existe outra conta com esse email.");
+      setSalvandoPerfil(false);
+      return;
+    }
+
+    const telefoneNormalizado = normalizarTelefone(telefoneLimpo);
+    const telefoneJaExiste = usuarios.some(
+      (item) =>
+        normalizarTelefone(item.telefone) === telefoneNormalizado &&
+        item.email.toLowerCase() !== emailSessaoOriginal.toLowerCase()
+    );
+
+    if (telefoneNormalizado && telefoneJaExiste) {
+      setMensagemPerfil("Ja existe outra conta com esse telefone.");
       setSalvandoPerfil(false);
       return;
     }

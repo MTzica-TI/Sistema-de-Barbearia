@@ -13,6 +13,7 @@ import {
 const ADMIN_SESSAO_KEY = "barber_admin_sessao";
 const AUTH_EVENT = "barber-auth-change";
 const USUARIOS_KEY = "barber_usuarios";
+const CLIENTE_SESSAO_KEY = "barber_cliente_sessao";
 
 type StatusAcesso = "carregando" | "negado" | "permitido";
 type FiltroEquipe = "todos" | "ativos" | "inativos";
@@ -31,6 +32,10 @@ type AssinaturaClienteResumo = {
   plano: Plano;
   status: "Ativa" | "Cancelada";
 };
+
+function normalizarTelefone(valor: string) {
+  return (valor ?? "").replace(/\D/g, "");
+}
 
 function carregarClientesDoStorage(): ClienteCadastro[] {
   if (typeof window === "undefined") {
@@ -76,7 +81,7 @@ export default function AdminPage() {
   const [paginaClientes, setPaginaClientes] = useState(1);
   const [salvandoDisponibilidadeId, setSalvandoDisponibilidadeId] = useState("");
   const [salvandoPerfilId, setSalvandoPerfilId] = useState("");
-  const [processandoAssinaturaClienteTelefone, setProcessandoAssinaturaClienteTelefone] =
+  const [processandoAssinaturaClienteEmail, setProcessandoAssinaturaClienteEmail] =
     useState("");
   const [criandoPerfilBarbeiro, setCriandoPerfilBarbeiro] = useState(false);
   const [excluindoPerfilId, setExcluindoPerfilId] = useState("");
@@ -104,6 +109,14 @@ export default function AdminPage() {
     ciclo: "/mes",
     destaque: false,
     beneficiosTexto: "",
+  });
+  const [clienteEmEdicaoEmail, setClienteEmEdicaoEmail] = useState<string | null>(null);
+  const [salvandoClienteEdicao, setSalvandoClienteEdicao] = useState(false);
+  const [formClienteEdicao, setFormClienteEdicao] = useState({
+    nome: "",
+    email: "",
+    telefone: "",
+    fotoUrl: "",
   });
 
   useEffect(() => {
@@ -287,6 +300,21 @@ export default function AdminPage() {
     );
   }, [buscaCliente, clientes]);
 
+  const mapaTelefoneDuplicado = useMemo(() => {
+    const contagem = new Map<string, number>();
+
+    clientes.forEach((cliente) => {
+      const telefone = normalizarTelefone(cliente.telefone);
+      if (!telefone) {
+        return;
+      }
+
+      contagem.set(telefone, (contagem.get(telefone) ?? 0) + 1);
+    });
+
+    return contagem;
+  }, [clientes]);
+
   const resumoClientes = useMemo(() => {
     const mapaAssinaturas = new Map(
       assinaturasClientes.map((item) => [item.clienteTelefone, item])
@@ -303,6 +331,10 @@ export default function AdminPage() {
         (item) => item.data === dataSelecionada && item.status === "Confirmado"
       );
       const assinatura = mapaAssinaturas.get(cliente.telefone);
+      const telefoneNormalizado = normalizarTelefone(cliente.telefone);
+      const telefoneDuplicado =
+        Boolean(telefoneNormalizado) &&
+        (mapaTelefoneDuplicado.get(telefoneNormalizado) ?? 0) > 1;
 
       return {
         ...cliente,
@@ -310,16 +342,17 @@ export default function AdminPage() {
         agendamentosHoje: hojeCliente.length,
         assinaturaPlano: assinatura?.plano ?? null,
         assinaturaAtiva: assinatura?.status === "Ativa",
+        telefoneDuplicado,
       };
     });
-  }, [agendamentos, assinaturasClientes, clientesFiltrados, dataSelecionada]);
+  }, [agendamentos, assinaturasClientes, clientesFiltrados, dataSelecionada, mapaTelefoneDuplicado]);
 
   const clientespaginados = useMemo(() => {
     const itensPorPagina = 10;
     const inicio = (paginaClientes - 1) * itensPorPagina;
     const fim = inicio + itensPorPagina;
     return resumoClientes.slice(inicio, fim);
-  }, [resumoClientes, paginaClientes]);
+  }, [paginaClientes, resumoClientes]);
 
   const totalPaginasClientes = Math.ceil(resumoClientes.length / 10);
 
@@ -522,11 +555,20 @@ export default function AdminPage() {
   async function alternarPlanoMensalCliente(cliente: {
     nome: string;
     telefone: string;
+    email: string;
     assinaturaPlano: Plano | null;
     assinaturaAtiva: boolean;
+    telefoneDuplicado: boolean;
   }) {
+    if (cliente.telefoneDuplicado) {
+      setMensagem(
+        "Telefone duplicado em mais de um perfil. Ajuste os cadastros para telefones unicos antes de ativar/desativar plano."
+      );
+      return;
+    }
+
     setMensagem("");
-    setProcessandoAssinaturaClienteTelefone(cliente.telefone);
+    setProcessandoAssinaturaClienteEmail(cliente.email);
 
     const acao = cliente.assinaturaAtiva ? "cancelar" : "ativar";
     const response = await fetch("/api/assinaturas", {
@@ -547,7 +589,7 @@ export default function AdminPage() {
 
     if (!response.ok || !resultado.assinatura) {
       setMensagem(resultado.error ?? "Nao foi possivel atualizar o plano do cliente.");
-      setProcessandoAssinaturaClienteTelefone("");
+      setProcessandoAssinaturaClienteEmail("");
       return;
     }
 
@@ -563,7 +605,126 @@ export default function AdminPage() {
         ? `Plano de ${cliente.nome} ativado com sucesso.`
         : `Plano de ${cliente.nome} desativado com sucesso.`
     );
-    setProcessandoAssinaturaClienteTelefone("");
+    setProcessandoAssinaturaClienteEmail("");
+  }
+
+  function iniciarEdicaoCliente(cliente: {
+    nome: string;
+    email: string;
+    telefone: string;
+    fotoUrl?: string;
+  }) {
+    setMensagem("");
+    setClienteEmEdicaoEmail(cliente.email);
+    setFormClienteEdicao({
+      nome: cliente.nome,
+      email: cliente.email,
+      telefone: cliente.telefone,
+      fotoUrl: cliente.fotoUrl ?? "",
+    });
+  }
+
+  function cancelarEdicaoCliente() {
+    setClienteEmEdicaoEmail(null);
+    setFormClienteEdicao({ nome: "", email: "", telefone: "", fotoUrl: "" });
+  }
+
+  function salvarEdicaoCliente() {
+    if (!clienteEmEdicaoEmail) {
+      return;
+    }
+
+    const nome = formClienteEdicao.nome.trim();
+    const email = formClienteEdicao.email.trim().toLowerCase();
+    const telefone = formClienteEdicao.telefone.trim();
+    const fotoUrl = formClienteEdicao.fotoUrl.trim();
+
+    if (!nome || !email || !telefone) {
+      setMensagem("Informe nome, email e telefone para salvar o perfil do cliente.");
+      return;
+    }
+
+    const clientesAtuais = carregarClientesDoStorage();
+    const emailOriginal = clienteEmEdicaoEmail.toLowerCase();
+    const indiceCliente = clientesAtuais.findIndex(
+      (item) => item.email.toLowerCase() === emailOriginal
+    );
+
+    if (indiceCliente < 0) {
+      setMensagem("Cliente nao encontrado para edicao.");
+      cancelarEdicaoCliente();
+      return;
+    }
+
+    const emailDuplicado = clientesAtuais.some(
+      (item) => item.email.toLowerCase() === email && item.email.toLowerCase() !== emailOriginal
+    );
+    if (emailDuplicado) {
+      setMensagem("Ja existe outro cliente com este email.");
+      return;
+    }
+
+    const telefoneNormalizado = normalizarTelefone(telefone);
+    const telefoneDuplicado = clientesAtuais.some(
+      (item) =>
+        normalizarTelefone(item.telefone) === telefoneNormalizado &&
+        item.email.toLowerCase() !== emailOriginal
+    );
+    if (telefoneNormalizado && telefoneDuplicado) {
+      setMensagem("Ja existe outro cliente com este telefone.");
+      return;
+    }
+
+    setSalvandoClienteEdicao(true);
+
+    const clienteAtualizado: ClienteCadastro = {
+      ...clientesAtuais[indiceCliente],
+      nome,
+      email,
+      telefone,
+      fotoUrl: fotoUrl || undefined,
+    };
+
+    const clientesAtualizados = [...clientesAtuais];
+    clientesAtualizados[indiceCliente] = clienteAtualizado;
+
+    window.localStorage.setItem(USUARIOS_KEY, JSON.stringify(clientesAtualizados));
+
+    const sessaoClienteBruta = window.localStorage.getItem(CLIENTE_SESSAO_KEY);
+    if (sessaoClienteBruta) {
+      try {
+        const sessaoCliente = JSON.parse(sessaoClienteBruta) as {
+          nome?: string;
+          email?: string;
+          telefone?: string;
+          fotoUrl?: string;
+        };
+
+        if (sessaoCliente.email?.toLowerCase() === emailOriginal) {
+          window.localStorage.setItem(
+            CLIENTE_SESSAO_KEY,
+            JSON.stringify({
+              ...sessaoCliente,
+              nome,
+              email,
+              telefone,
+              fotoUrl: fotoUrl || undefined,
+            })
+          );
+        }
+      } catch {
+        // ignora sessao invalida
+      }
+    }
+
+    setClientes(
+      [...clientesAtualizados].sort((a, b) => a.nome.localeCompare(b.nome))
+    );
+    window.dispatchEvent(new Event(AUTH_EVENT));
+
+    setMensagem(`Perfil de ${nome} atualizado com sucesso.`);
+    setSalvandoClienteEdicao(false);
+    cancelarEdicaoCliente();
   }
 
   async function criarPerfilBarbeiro(event: React.FormEvent<HTMLFormElement>) {
@@ -1397,32 +1558,143 @@ export default function AdminPage() {
                 </div>
                 <p>Email: {cliente.email}</p>
                 <p>Telefone: {cliente.telefone}</p>
+                {cliente.telefoneDuplicado && (
+                  <p className="text-xs font-semibold text-red-700">
+                    Telefone duplicado com outro perfil. Plano bloqueado ate regularizar.
+                  </p>
+                )}
                 <p>
                   Agendamentos totais: <strong>{cliente.totalAgendamentos}</strong> | Hoje:{" "}
                   <strong>{cliente.agendamentosHoje}</strong>
                 </p>
                 <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={() => alternarPlanoMensalCliente(cliente)}
-                    disabled={
-                      processandoAssinaturaClienteTelefone === cliente.telefone
-                    }
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 ${
-                      cliente.assinaturaAtiva
-                        ? "bg-red-600 hover:bg-red-700"
-                        : "bg-emerald-700 hover:bg-emerald-800"
-                    }`}
-                  >
-                    {processandoAssinaturaClienteTelefone === cliente.telefone
-                      ? "Atualizando..."
-                      : cliente.assinaturaAtiva
-                        ? "Desativar plano"
-                        : cliente.assinaturaPlano
-                          ? `Ativar plano ${cliente.assinaturaPlano}`
-                          : "Ativar plano Mensal"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => alternarPlanoMensalCliente(cliente)}
+                      disabled={
+                        processandoAssinaturaClienteEmail === cliente.email ||
+                        cliente.telefoneDuplicado
+                      }
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 ${
+                        cliente.assinaturaAtiva
+                          ? "bg-red-600 hover:bg-red-700"
+                          : "bg-emerald-700 hover:bg-emerald-800"
+                      }`}
+                    >
+                      {processandoAssinaturaClienteEmail === cliente.email
+                        ? "Atualizando..."
+                        : cliente.assinaturaAtiva
+                          ? "Desativar plano"
+                          : cliente.assinaturaPlano
+                            ? `Ativar plano ${cliente.assinaturaPlano}`
+                            : "Ativar plano Mensal"}
+                    </button>
+
+                    {clienteEmEdicaoEmail === cliente.email ? (
+                      <button
+                        type="button"
+                        onClick={cancelarEdicaoCliente}
+                        className="rounded-lg border border-amber-900/30 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-50"
+                      >
+                        Fechar edicao
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => iniciarEdicaoCliente(cliente)}
+                        className="rounded-lg border border-amber-900/30 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-50"
+                      >
+                        Editar perfil
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {clienteEmEdicaoEmail === cliente.email && (
+                  <div className="mt-3 rounded-xl border border-amber-900/20 bg-amber-50/60 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                      Editar perfil do cliente
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <label className="sm:col-span-2">
+                        <span className="text-xs font-medium text-amber-900">Nome</span>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+                          value={formClienteEdicao.nome}
+                          onChange={(event) =>
+                            setFormClienteEdicao((anterior) => ({
+                              ...anterior,
+                              nome: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        <span className="text-xs font-medium text-amber-900">Email</span>
+                        <input
+                          type="email"
+                          className="mt-1 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+                          value={formClienteEdicao.email}
+                          onChange={(event) =>
+                            setFormClienteEdicao((anterior) => ({
+                              ...anterior,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        <span className="text-xs font-medium text-amber-900">Telefone</span>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+                          value={formClienteEdicao.telefone}
+                          onChange={(event) =>
+                            setFormClienteEdicao((anterior) => ({
+                              ...anterior,
+                              telefone: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      <label className="sm:col-span-2">
+                        <span className="text-xs font-medium text-amber-900">URL da foto</span>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-amber-900/20 bg-white px-3 py-2"
+                          value={formClienteEdicao.fotoUrl}
+                          onChange={(event) =>
+                            setFormClienteEdicao((anterior) => ({
+                              ...anterior,
+                              fotoUrl: event.target.value,
+                            }))
+                          }
+                          placeholder="https://..."
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={salvarEdicaoCliente}
+                        disabled={salvandoClienteEdicao}
+                        className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-950 disabled:opacity-60"
+                      >
+                        {salvandoClienteEdicao ? "Salvando..." : "Salvar alteracoes"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelarEdicaoCliente}
+                        className="rounded-lg border border-amber-900/30 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </article>
           ))}
