@@ -9,12 +9,11 @@ export default function Home() {
             BARBEARIA SISTEMA
           </p>
           <h1 className="text-5xl leading-none text-amber-950 sm:text-6xl">
-            Seu estilo, no horario certo.
+            Seu corte impecavel, sem espera e no horario certo.
           </h1>
           <p className="max-w-xl text-base text-amber-950/80 sm:text-lg">
-            Plataforma completa para agendamentos, pagamentos recorrentes e
-            gestao da sua barbearia. Cliente marca em minutos e equipe acompanha
-            tudo em tempo real.
+            Agende em menos de 1 minuto, escolha seu barbeiro favorito e
+            chegue para ser atendido com tranquilidade.
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
             <Link
@@ -24,43 +23,95 @@ export default function Home() {
               Agendar agora
             </Link>
             <Link
-              href="/servicos"
+              href="/assinaturas"
               className="rounded-xl border border-amber-900/25 px-5 py-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
             >
-              Ver servicos e precos
+              Ver assinaturas
             </Link>
+          </div>
+          <div className="grid gap-3 pt-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-amber-900/15 bg-amber-50/80 px-4 py-3">
+              <p className="text-2xl font-semibold text-amber-950">+1.200</p>
+              <p className="text-xs font-medium text-amber-900/85">clientes atendidos</p>
+            </div>
+            <div className="rounded-xl border border-amber-900/15 bg-amber-50/80 px-4 py-3">
+              <p className="text-2xl font-semibold text-amber-950">4.9/5</p>
+              <p className="text-xs font-medium text-amber-900/85">nota media nas avaliacoes</p>
+            </div>
+            <div className="rounded-xl border border-amber-900/15 bg-amber-50/80 px-4 py-3">
+              <p className="text-2xl font-semibold text-amber-950">98%</p>
+              <p className="text-xs font-medium text-amber-900/85">retorno em ate 30 dias</p>
+            </div>
           </div>
         </div>
         <div className="rounded-2xl bg-[linear-gradient(150deg,#1f130c,#3f2415_45%,#5e3318)] p-6 text-amber-50">
-          <h2 className="text-3xl">Como funciona</h2>
-          <ol className="mt-4 space-y-3 text-sm sm:text-base">
-            <li>1. Cliente escolhe plano, barbeiro e servico.</li>
-            <li>2. Seleciona data e horario disponivel no calendario.</li>
-            <li>3. Confirma pagamento e recebe WhatsApp automatico.</li>
-            <li>4. Horario fica bloqueado para evitar conflito.</li>
-          </ol>
-          <p className="mt-6 text-sm text-amber-100/85">
-            Integracoes prontas para Stripe, Mercado Pago, PagSeguro e
-            AbacatePay.
+          <h2 className="text-3xl">Avaliacoes de clientes</h2>
+          <p className="mt-2 text-sm text-amber-100/85">
+            Quem agenda, volta. Veja o que os clientes falam do atendimento.
           </p>
+
+          <div className="mt-5 space-y-3">
+            {[
+              [
+                "5/5",
+                "Agendei em menos de 1 minuto e fui atendido no horario.",
+                "Rafael, cliente desde 2024",
+              ],
+              [
+                "4.9/5",
+                "Equipe atenciosa e processo muito pratico pelo celular.",
+                "Leandro, cliente mensal",
+              ],
+              [
+                "5/5",
+                "Consigo remarcar rapido quando preciso. Plataforma excelente.",
+                "Marcos, cliente recorrente",
+              ],
+            ].map(([nota, comentario, autor]) => (
+              <article
+                key={autor}
+                className="rounded-xl border border-amber-100/20 bg-white/10 p-4"
+              >
+                <p className="text-sm font-semibold text-amber-200">{nota}</p>
+                <p className="mt-1 text-sm text-amber-50/95">"{comentario}"</p>
+                <p className="mt-2 text-xs text-amber-100/80">{autor}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Agenda inteligente", "Bloqueio automatico de horario"],
-          ["Painel administrativo", "Agenda, equipe e faturamento"],
-          ["Login de clientes", "Historico e cancelamento online"],
-          ["Fidelidade", "Cupons, assinatura e recorrencia"],
-        ].map(([title, text]) => (
-          <article
-            key={title}
-            className="rounded-2xl border border-amber-900/15 bg-[var(--surface)] p-5"
-          >
-            <h3 className="text-2xl text-amber-900">{title}</h3>
-            <p className="mt-2 text-sm text-amber-950/80">{text}</p>
-          </article>
-        ))}
+      <div className="space-y-4">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.18em] text-amber-900/70">
+              POR QUE ESCOLHER A GENTE
+            </p>
+            <h2 className="text-3xl text-amber-950 sm:text-4xl">
+              Experiencia completa para voce sair no estilo
+            </h2>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["01", "Pontualidade de verdade", "Seu horario reservado para voce, sem fila e sem atraso."],
+            ["02", "Barbeiros especialistas", "Profissionais experientes em degradê, tesoura e acabamento."],
+            ["03", "Conforto do inicio ao fim", "Ambiente climatizado, atendimento atencioso e cafe por conta da casa."],
+            ["04", "Facilidade no pagamento", "Pix, cartao e dinheiro com confirmacao rapida no agendamento."],
+          ].map(([index, title, text]) => (
+            <article
+              key={title}
+              className="group rounded-2xl border border-amber-900/15 bg-[var(--surface)] p-5 transition hover:-translate-y-1 hover:border-amber-800/30 hover:shadow-[0_14px_30px_rgba(90,45,12,0.12)]"
+            >
+              <p className="inline-flex rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-900">
+                {index}
+              </p>
+              <h3 className="mt-3 text-2xl text-amber-900">{title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-amber-950/80">{text}</p>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
